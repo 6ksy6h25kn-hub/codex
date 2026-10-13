@@ -1364,9 +1364,9 @@
     const deep=cells.filter(i=>depth[i]>=Math.max(2,Math.floor(max*.75))),centerPool=deep.length?deep:pool;
     let center=centerPool[0],d=Infinity;for(const i of centerPool){const v=distance(g.point(i),average);if(v<d){d=v;center=i;}}
     if(gardenData?.family?.endsWith('ant_hell')){
-      const middleY=(minY+maxY)/2,middle=[],taken=new Set(corners.map(p=>g.nearest(mapping.toMap(p),'Patrol point',0)));
-      for(const wanted of [{x:minX,y:middleY},{x:maxX,y:middleY}]){let best=-1,error=Infinity;for(const i of pool){if(taken.has(i))continue;const d=distance(g.point(i),wanted);if(d<error){error=d;best=i;}}if(best>=0){taken.add(best);middle.push(mapping.toWorld(g.point(best)));}}
-      if(middle.length===2)corners.splice(2,0,...middle.reverse());
+      const middleX=(minX+maxX)/2,middle=[],taken=new Set(corners.map(p=>g.nearest(mapping.toMap(p),'Patrol point',0)));
+      for(const wanted of [{x:middleX,y:minY},{x:middleX,y:maxY}]){let best=-1,error=Infinity;for(const i of pool){if(taken.has(i))continue;const d=distance(g.point(i),wanted);if(d<error){error=d;best=i;}}if(best>=0){taken.add(best);middle.push(mapping.toWorld(g.point(best)));}}
+      if(middle.length===2){const original=corners.slice();corners.splice(0,corners.length,original[0],middle[0],original[1],original[2],middle[1],original[3]);}
     }
     return {center:mapping.toWorld(g.point(center)),corners};
   }
