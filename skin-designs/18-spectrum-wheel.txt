@@ -1,0 +1,17 @@
+polygon points=0,0,0.0,-47.0,23.5,-40.7 fill=#22d3ee
+polygon points=0,0,23.5,-40.7,40.7,-23.5 fill=#a855f7
+polygon points=0,0,40.7,-23.5,47.0,-0.0 fill=#ec4899
+polygon points=0,0,47.0,0.0,40.7,23.5 fill=#fbbf24
+polygon points=0,0,40.7,23.5,23.5,40.7 fill=#60a5fa
+polygon points=0,0,23.5,40.7,0.0,47.0 fill=#34d399
+polygon points=0,0,0.0,47.0,-23.5,40.7 fill=#22d3ee
+polygon points=0,0,-23.5,40.7,-40.7,23.5 fill=#a855f7
+polygon points=0,0,-40.7,23.5,-47.0,0.0 fill=#ec4899
+polygon points=0,0,-47.0,0.0,-40.7,-23.5 fill=#fbbf24
+polygon points=0,0,-40.7,-23.5,-23.5,-40.7 fill=#60a5fa
+polygon points=0,0,-23.5,-40.7,-0.0,-47.0 fill=#34d399
+polygon points=0.0,-15.0,12.99,-7.5,12.99,7.5,0.0,15.0,-12.99,7.5,-12.99,-7.5 fill=#020617
+polygon points=0,0,0.0,-10.0,10.0,0.0 fill=#ffffff
+polygon points=0,0,10.0,0.0,0.0,10.0 fill=#22d3ee
+polygon points=0,0,0.0,10.0,-10.0,0.0 fill=#60a5fa
+polygon points=0,0,-10.0,0.0,0.0,-10.0 fill=#ffffff

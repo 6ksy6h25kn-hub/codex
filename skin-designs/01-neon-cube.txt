@@ -1,0 +1,12 @@
+line x=0 y=-44 x2=40 y2=-22 stroke=#a855f7 sw=2
+line x=40 y=-22 x2=0 y2=0 stroke=#a855f7 sw=2
+line x=0 y=0 x2=-40 y2=-22 stroke=#a855f7 sw=2
+line x=-40 y=-22 x2=0 y2=-44 stroke=#a855f7 sw=2
+line x=0 y=0 x2=40 y2=22 stroke=#22d3ee sw=2
+line x=40 y=22 x2=0 y2=44 stroke=#22d3ee sw=2
+line x=0 y=44 x2=-40 y2=22 stroke=#22d3ee sw=2
+line x=-40 y=22 x2=0 y2=0 stroke=#22d3ee sw=2
+line x=0 y=-44 x2=0 y2=0 stroke=#22d3ee sw=2
+line x=40 y=-22 x2=40 y2=22 stroke=#a855f7 sw=2
+line x=0 y=0 x2=0 y2=44 stroke=#22d3ee sw=2
+line x=-40 y=-22 x2=-40 y2=22 stroke=#a855f7 sw=2

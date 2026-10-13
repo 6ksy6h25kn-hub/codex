@@ -1,0 +1,70 @@
+circle x=0 y=0 r=44 fill=#111827
+circle x=0 y=0 r=38 fill=#1e293b
+polygon points=-42,0,-18,-20,16,-20,42,0,16,20,-18,20 fill=#2563eb
+circle x=0 y=0 r=23 fill=#1d4ed8
+circle x=0 y=0 r=16 fill=#0f172a
+circle x=-7 y=-9 r=7 fill=#ffffff
+line x=0.0 y=-44.0 x2=4.31 y2=-43.79 stroke=#020617 sw=2
+line x=4.31 y=-43.79 x2=8.58 y2=-43.15 stroke=#020617 sw=2
+line x=8.58 y=-43.15 x2=12.77 y2=-42.11 stroke=#020617 sw=2
+line x=12.77 y=-42.11 x2=16.84 y2=-40.65 stroke=#020617 sw=2
+line x=16.84 y=-40.65 x2=20.74 y2=-38.8 stroke=#020617 sw=2
+line x=20.74 y=-38.8 x2=24.45 y2=-36.58 stroke=#020617 sw=2
+line x=24.45 y=-36.58 x2=27.91 y2=-34.01 stroke=#020617 sw=2
+line x=27.91 y=-34.01 x2=31.11 y2=-31.11 stroke=#020617 sw=2
+line x=31.11 y=-31.11 x2=34.01 y2=-27.91 stroke=#020617 sw=2
+line x=34.01 y=-27.91 x2=36.58 y2=-24.45 stroke=#020617 sw=2
+line x=36.58 y=-24.45 x2=38.8 y2=-20.74 stroke=#020617 sw=2
+line x=38.8 y=-20.74 x2=40.65 y2=-16.84 stroke=#020617 sw=2
+line x=40.65 y=-16.84 x2=42.11 y2=-12.77 stroke=#020617 sw=2
+line x=42.11 y=-12.77 x2=43.15 y2=-8.58 stroke=#020617 sw=2
+line x=43.15 y=-8.58 x2=43.79 y2=-4.31 stroke=#020617 sw=2
+line x=43.79 y=-4.31 x2=44.0 y2=0.0 stroke=#020617 sw=2
+line x=44.0 y=0.0 x2=43.79 y2=4.31 stroke=#020617 sw=2
+line x=43.79 y=4.31 x2=43.15 y2=8.58 stroke=#020617 sw=2
+line x=43.15 y=8.58 x2=42.11 y2=12.77 stroke=#020617 sw=2
+line x=42.11 y=12.77 x2=40.65 y2=16.84 stroke=#020617 sw=2
+line x=40.65 y=16.84 x2=38.8 y2=20.74 stroke=#020617 sw=2
+line x=38.8 y=20.74 x2=36.58 y2=24.45 stroke=#020617 sw=2
+line x=36.58 y=24.45 x2=34.01 y2=27.91 stroke=#020617 sw=2
+line x=34.01 y=27.91 x2=31.11 y2=31.11 stroke=#020617 sw=2
+line x=31.11 y=31.11 x2=27.91 y2=34.01 stroke=#020617 sw=2
+line x=27.91 y=34.01 x2=24.45 y2=36.58 stroke=#020617 sw=2
+line x=24.45 y=36.58 x2=20.74 y2=38.8 stroke=#020617 sw=2
+line x=20.74 y=38.8 x2=16.84 y2=40.65 stroke=#020617 sw=2
+line x=16.84 y=40.65 x2=12.77 y2=42.11 stroke=#020617 sw=2
+line x=12.77 y=42.11 x2=8.58 y2=43.15 stroke=#020617 sw=2
+line x=8.58 y=43.15 x2=4.31 y2=43.79 stroke=#020617 sw=2
+line x=4.31 y=43.79 x2=0.0 y2=44.0 stroke=#020617 sw=2
+line x=0.0 y=44.0 x2=-4.31 y2=43.79 stroke=#020617 sw=2
+line x=-4.31 y=43.79 x2=-8.58 y2=43.15 stroke=#020617 sw=2
+line x=-8.58 y=43.15 x2=-12.77 y2=42.11 stroke=#020617 sw=2
+line x=-12.77 y=42.11 x2=-16.84 y2=40.65 stroke=#020617 sw=2
+line x=-16.84 y=40.65 x2=-20.74 y2=38.8 stroke=#020617 sw=2
+line x=-20.74 y=38.8 x2=-24.45 y2=36.58 stroke=#020617 sw=2
+line x=-24.45 y=36.58 x2=-27.91 y2=34.01 stroke=#020617 sw=2
+line x=-27.91 y=34.01 x2=-31.11 y2=31.11 stroke=#020617 sw=2
+line x=-31.11 y=31.11 x2=-34.01 y2=27.91 stroke=#020617 sw=2
+line x=-34.01 y=27.91 x2=-36.58 y2=24.45 stroke=#020617 sw=2
+line x=-36.58 y=24.45 x2=-38.8 y2=20.74 stroke=#020617 sw=2
+line x=-38.8 y=20.74 x2=-40.65 y2=16.84 stroke=#020617 sw=2
+line x=-40.65 y=16.84 x2=-42.11 y2=12.77 stroke=#020617 sw=2
+line x=-42.11 y=12.77 x2=-43.15 y2=8.58 stroke=#020617 sw=2
+line x=-43.15 y=8.58 x2=-43.79 y2=4.31 stroke=#020617 sw=2
+line x=-43.79 y=4.31 x2=-44.0 y2=0.0 stroke=#020617 sw=2
+line x=-44.0 y=0.0 x2=-43.79 y2=-4.31 stroke=#020617 sw=2
+line x=-43.79 y=-4.31 x2=-43.15 y2=-8.58 stroke=#020617 sw=2
+line x=-43.15 y=-8.58 x2=-42.11 y2=-12.77 stroke=#020617 sw=2
+line x=-42.11 y=-12.77 x2=-40.65 y2=-16.84 stroke=#020617 sw=2
+line x=-40.65 y=-16.84 x2=-38.8 y2=-20.74 stroke=#020617 sw=2
+line x=-38.8 y=-20.74 x2=-36.58 y2=-24.45 stroke=#020617 sw=2
+line x=-36.58 y=-24.45 x2=-34.01 y2=-27.91 stroke=#020617 sw=2
+line x=-34.01 y=-27.91 x2=-31.11 y2=-31.11 stroke=#020617 sw=2
+line x=-31.11 y=-31.11 x2=-27.91 y2=-34.01 stroke=#020617 sw=2
+line x=-27.91 y=-34.01 x2=-24.45 y2=-36.58 stroke=#020617 sw=2
+line x=-24.45 y=-36.58 x2=-20.74 y2=-38.8 stroke=#020617 sw=2
+line x=-20.74 y=-38.8 x2=-16.84 y2=-40.65 stroke=#020617 sw=2
+line x=-16.84 y=-40.65 x2=-12.77 y2=-42.11 stroke=#020617 sw=2
+line x=-12.77 y=-42.11 x2=-8.58 y2=-43.15 stroke=#020617 sw=2
+line x=-8.58 y=-43.15 x2=-4.31 y2=-43.79 stroke=#020617 sw=2
+line x=-4.31 y=-43.79 x2=0.0 y2=-44.0 stroke=#020617 sw=2

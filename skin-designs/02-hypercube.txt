@@ -1,0 +1,12 @@
+line x=-37 y=-37 x2=37 y2=-37 stroke=#071125 sw=2
+line x=37 y=-37 x2=37 y2=37 stroke=#071125 sw=2
+line x=37 y=37 x2=-37 y2=37 stroke=#071125 sw=2
+line x=-37 y=37 x2=-37 y2=-37 stroke=#071125 sw=2
+line x=-18 y=-18 x2=18 y2=-18 stroke=#22d3ee sw=2
+line x=18 y=-18 x2=18 y2=18 stroke=#22d3ee sw=2
+line x=18 y=18 x2=-18 y2=18 stroke=#22d3ee sw=2
+line x=-18 y=18 x2=-18 y2=-18 stroke=#22d3ee sw=2
+line x=-37 y=-37 x2=-18 y2=-18 stroke=#a855f7 sw=2
+line x=37 y=-37 x2=18 y2=-18 stroke=#a855f7 sw=2
+line x=37 y=37 x2=18 y2=18 stroke=#a855f7 sw=2
+line x=-37 y=37 x2=-18 y2=18 stroke=#a855f7 sw=2

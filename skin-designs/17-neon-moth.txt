@@ -1,0 +1,12 @@
+polygon points=-4,0,-45,-40,-40,17,-7,30 fill=#4c1d95
+polygon points=-4,0,-38,-37,-34,21,-7,30 fill=#a855f7
+polygon points=-4,0,-31,-34,-28,25,-7,30 fill=#22d3ee
+polygon points=-4,0,-24,-31,-22,29,-7,30 fill=#ec4899
+polygon points=4,0,45,-40,40,17,7,30 fill=#4c1d95
+polygon points=4,0,38,-37,34,21,7,30 fill=#a855f7
+polygon points=4,0,31,-34,28,25,7,30 fill=#22d3ee
+polygon points=4,0,24,-31,22,29,7,30 fill=#ec4899
+polygon points=0,0,0.0,-15.0,15.0,0.0 fill=#ffffff
+polygon points=0,0,15.0,0.0,0.0,15.0 fill=#c4b5fd
+polygon points=0,0,0.0,15.0,-15.0,0.0 fill=#a855f7
+polygon points=0,0,-15.0,0.0,0.0,-15.0 fill=#e9d5ff

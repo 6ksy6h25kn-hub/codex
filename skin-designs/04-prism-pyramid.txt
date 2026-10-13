@@ -1,0 +1,7 @@
+polygon points=0,-46,-42,33,42,33 fill=#e2e8f0
+polygon points=0,-46,-42,33,0,9 fill=#ffffff
+polygon points=-42,33,42,33,0,9 fill=#64748b
+polygon points=0,-46,42,33,0,9 fill=#94a3b8
+line x=0 y=-46 x2=-42 y2=33 stroke=#172033 sw=1
+line x=-42 y=33 x2=42 y2=33 stroke=#172033 sw=1
+line x=42 y=33 x2=0 y2=-46 stroke=#172033 sw=1
