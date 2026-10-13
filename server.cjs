@@ -25,6 +25,17 @@ async function createApp({password = process.env.REPLIT_ACCESS_PASSWORD, gameURL
     const id = (req.headers.cookie || '').split(';').map(s => s.trim()).find(s => s.startsWith('flowrix_session='))?.slice(16);
     const expiry = sessions.get(id);if (!expiry || expiry < Date.now()) {sessions.delete(id);return false;}return true;
   };
+  function validOrigin(req) {
+    try {
+      const origin=new URL(req.headers.origin);
+      if(!['https:','http:'].includes(origin.protocol))return false;
+      const hosts=new Set([req.headers.host]);
+      for(const domain of [process.env.REPLIT_DEV_DOMAIN,...(process.env.REPLIT_DOMAINS||'').split(',')]) {
+        if(domain?.trim())hosts.add(domain.trim());
+      }
+      return hosts.has(origin.host);
+    } catch {return false;}
+  }
   async function readBody(req) {
     let body = '';for await (const chunk of req) {body += chunk;if (body.length > 16384) throw new Error('Request too large');}return body;
   }
@@ -93,8 +104,9 @@ async function createApp({password = process.env.REPLIT_ACCESS_PASSWORD, gameURL
       const url = new URL(req.url,'http://localhost'), file = publicFiles.get(url.pathname);
       if (file && req.method === 'GET') {res.writeHead(200,{'Content-Type':file[1]});return res.end(fs.readFileSync(path.join(__dirname,'public',file[0])));}
       if (url.pathname === '/health') return json(res,200,{server:true,browser:ready,script:injected});
+      if (url.pathname === '/login' && req.method === 'GET') {res.writeHead(303,{Location:'/'});return res.end();}
       if (url.pathname === '/login' && req.method === 'POST') {
-        if (req.headers.origin && new URL(req.headers.origin).host !== req.headers.host) return json(res,403,{error:'Invalid origin'});
+        if (req.headers.origin && !validOrigin(req)) return json(res,403,{error:'Open the full HTTPS viewer URL in a separate browser tab, reload the login page, then try again.'});
         const ip = req.socket.remoteAddress, now = Date.now(), attempt = attempts.get(ip) || {count:0,until:now+60000};
         if (attempt.until < now) {attempt.count = 0;attempt.until = now+60000;}attempt.count++;attempts.set(ip,attempt);
         if (attempt.count > 10) return json(res,429,{error:'Too many attempts. Wait one minute.'});
@@ -117,7 +129,7 @@ async function createApp({password = process.env.REPLIT_ACCESS_PASSWORD, gameURL
         return json(res,200,{ready,injected,error:lastError,state,width:WIDTH,height:HEIGHT});
       }
       if (url.pathname === '/api/control' && req.method === 'POST') {
-        if (!req.headers.origin || new URL(req.headers.origin).host !== req.headers.host || !/^application\/json\b/.test(req.headers['content-type'] || '')) return json(res,403,{error:'Invalid control origin'});
+        if (!validOrigin(req) || !/^application\/json\b/.test(req.headers['content-type'] || '')) return json(res,403,{error:'Invalid control origin'});
         const data = JSON.parse(await readBody(req));await serial(() => control(data));return json(res,200,{ok:true});
       }
       json(res,404,{error:'Not found'});

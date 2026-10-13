@@ -10,6 +10,8 @@ test('Private viewer authenticates, injects the navigator and controls a browser
   try{
     await new Promise(resolve=>app.server.listen(0,'127.0.0.1',resolve));const base=`http://127.0.0.1:${app.server.address().port}`;
     assert.equal((await fetch(base+'/api/status')).status,401);
+    assert.equal((await fetch(base+'/login',{redirect:'manual'})).status,303);
+    for(const origin of ['null','not-a-url','https://unrelated.example'])assert.equal((await fetch(base+'/login',{method:'POST',headers:{Origin:origin},body:'password=wrong'})).status,403);
     assert.equal((await fetch(base+'/login',{method:'POST',body:'password=wrong'})).status,401);
     const response=await fetch(base+'/login',{method:'POST',body:new URLSearchParams({password}),redirect:'manual'});assert.equal(response.status,303);
     const cookie=response.headers.get('set-cookie').split(';')[0];assert(response.headers.get('set-cookie').includes('HttpOnly'));
