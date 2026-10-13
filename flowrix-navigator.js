@@ -741,7 +741,7 @@
   const apexControls=element('div','','',panel);
   const apexEnabled=element('input','','',apexControls);apexEnabled.type='checkbox';apexEnabled.checked=true;
   apexControls.append(' Hunt Apex · Border gap: ');
-  const apexDistance=element('input','number','',apexControls);apexDistance.type='number';apexDistance.min='100';apexDistance.max='2000';apexDistance.value='800';
+  const apexDistance=element('input','number','',apexControls);apexDistance.type='number';apexDistance.min='100';apexDistance.max='2000';apexDistance.value='200';
   const apexStatus=element('div','apex-status','Apex watch ready.',apexControls);
   panel.insertBefore(apexControls,mapbox);
   const apex={queue:[],active:null,seen:new Map(),completed:0,ignored:0,lastError:null};
@@ -986,7 +986,7 @@
     const m=mapping.toMap(position()),x=Math.floor(m.x+.5),y=Math.floor(m.y+.5),size=gardenData.size;
     return x>=0&&y>=0&&x<size&&y<size&&gardenOpen[y*size+x]&&gardenRanks[y*size+x]>=6&&gardenRanks[y*size+x]!==255;
   }
-  function apexGap(){return Math.max(100,Math.min(2000,Number(apexDistance.value)||800));}
+  function apexGap(){return Math.max(100,Math.min(2000,Number(apexDistance.value)||200));}
   function apexKnownBoss(job){
     const b=job?.lastBoss;return !job?.dead&&b&&b.hp>0?b:null;
   }
@@ -1225,7 +1225,7 @@
         if(apexHealthGuard())apexStatus.textContent+=' · Low HP: increasing retreat distance until recovered';
         else if(Date.now()-job.damageWatch.at>15000)apexStatus.textContent+=' · No boss HP decrease observed: attack reach/build may be insufficient at this gap';
         const stand=apexStandPoint(job);
-        if(!stand){const escapeKeys=apexSafeKeys(job,[]);hold(escapeKeys);apexStatus.textContent=escapeKeys.length?'Retreating from the Apex; searching for safe floor.':`No reachable floor with the requested ${Number(apexDistance.value)||800}-unit border gap. Holding position while tracking the Apex.`;await wait(90);continue;}
+        if(!stand){const escapeKeys=apexSafeKeys(job,[]);hold(escapeKeys);apexStatus.textContent=escapeKeys.length?'Retreating from the Apex; searching for safe floor.':`No reachable floor with the requested ${Number(apexDistance.value)||200}-unit border gap. Holding position while tracking the Apex.`;await wait(90);continue;}
         const dx=stand.world.x-pos.x,dy=stand.world.y-pos.y;
         if(Math.abs(dx)<45&&Math.abs(dy)<60){hold(apexSafeKeys(job,[],.08));await wait(80);continue;}
         // Follow one short, collision-checked segment and refresh the moving boss.
