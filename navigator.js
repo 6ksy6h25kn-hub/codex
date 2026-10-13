@@ -718,13 +718,14 @@
   // Loading L4 is idempotent; blind reserve toggles are not.
   function farmPreset(map=spawnSelect.value){return map==='Normal Ant Hell'||map==='Sewers'?5:4;}
   const antSewerFarmPetals=['stick','stick','stick','stick','powder','antennae','shell','root','magnet','bulb'];
-  function farmBuildSwapKeys(slots,ids){const keys=[];for(let i=0;i<antSewerFarmPetals.length;i++){const wanted=ids.indexOf(antSewerFarmPetals[i]);if(wanted<0)return null;if(slots?.[i]?.type===wanted)continue;if(slots?.[i+10]?.type!==wanted)return null;keys.push(String((i+1)%10));}return keys;}
+  const antSewerReservePetals=['shell','powder','powder','powder','stick','stick','magnet',null,null,'shell'];
+  function farmBuildSwapKeys(slots,ids,full=false){const keys=[];for(let i=0;i<antSewerFarmPetals.length;i++){const wanted=ids.indexOf(antSewerFarmPetals[i]),reserve=antSewerReservePetals[i]===null?65535:ids.indexOf(antSewerReservePetals[i]);if(wanted<0||full&&reserve<0)return null;const active=slots?.[i]?.type,stored=slots?.[i+10]?.type;if(active===wanted&&(!full||stored===reserve))continue;if(stored!==wanted||full&&active!==reserve)return null;keys.push(String((i+1)%10));}return keys;}
   async function applyAntSewerFarmBuild(token){
     let ids;try{ids=Object.keys(JSON.parse(Module.FS.readFile('/data/petals.json',{encoding:'utf8'}))).sort();}catch{status.textContent='Cannot read petal registry to verify the Ant Hell/Sewers build.';return false;}
-    const keys=farmBuildSwapKeys(networkLifeTotals?.equipped,ids);if(!keys){status.textContent='Save the pictured Ant Hell/Sewers build as L'+farmPreset()+': 4 Stick, Powder, Antennae, Shell, Root, Magnet, Bulb.';return false;}
+    const full=farmPreset()===5,keys=farmBuildSwapKeys(networkLifeTotals?.equipped,ids,full);if(!keys){status.textContent='Save the pictured Ant Hell/Sewers build as L'+farmPreset()+': active 4 Stick, Powder, Antennae, Shell, Root, Magnet, Bulb; reserve Shell, 3 Powder, 2 Stick, Magnet, empty, empty, Shell.';return false;}
     if(keys.length&&!await swapTravelLoadout(token,keys))return false;
-    const began=Date.now();for(let i=0;keys.length&&i<12&&running&&token===version;i++){if(networkLifeTotals?.receivedAt>began&&farmBuildSwapKeys(networkLifeTotals.equipped,ids)?.length===0)break;await wait(100);}
-    if(farmBuildSwapKeys(networkLifeTotals?.equipped,ids)?.length!==0){status.textContent='Ant Hell/Sewers petal swaps could not be confirmed. Retrying the saved build.';return false;}
+    const began=Date.now();for(let i=0;keys.length&&i<12&&running&&token===version;i++){if(networkLifeTotals?.receivedAt>began&&farmBuildSwapKeys(networkLifeTotals.equipped,ids,full)?.length===0)break;await wait(100);}
+    if(farmBuildSwapKeys(networkLifeTotals?.equipped,ids,full)?.length!==0){status.textContent='Ant Hell/Sewers petal swaps could not be confirmed. Retrying the saved build.';return false;}
     status.textContent='Ant Hell/Sewers farming build verified.';return true;
   }
   async function verifyFarmLoadout(token){
