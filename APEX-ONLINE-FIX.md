@@ -86,3 +86,7 @@ The Jungle map names its difficulty-90 transition area `mythic-ultra zone`. Matc
 ## Missed defeat recovery
 
 A missed network announcement previously left low-HP respawn forecasting in an unlimited wait. New rendered-text observation recognizes complete purple system defeat lines, ignores player-prefixed chat and repeated old text, and only ends matching hunts. Cached pre-existing bitmap text may still be unavailable to this observer. A 45-second unconfirmed defeat wait abandons the hunt and returns to farming through normal cleanup, without claiming a kill or entering loot mode. Regression coverage includes the reported Moth text, wrong-color and player-chat rejection, repeat suppression, unrelated jobs, and timeout boundaries.
+
+## Loadout verification and 100-unit gap
+
+The default border gap is now 100 units. Public profile parsing retains saved loadouts, allowing L+number selection to wait for matching equipped petals and retry up to three times. Runtime checks every three seconds compare fresh player profiles against the intended build, including explicitly tracked Antennae, magnet, and travel/farm reserve swaps; mismatches restore the saved preset and reapply those swaps. Checks run during navigation and Apex combat as well as farming/respawn transitions. Missing saved presets or stale profiles cannot prove loadout correctness and retain existing best-effort key behavior. Browser regressions cover preset parsing, retry success, persistent mismatch failure, and restoration of slots 1/3/4/5.

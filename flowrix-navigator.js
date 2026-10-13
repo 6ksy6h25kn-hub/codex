@@ -232,7 +232,7 @@
   const raw = document.createElement('canvas'), rc = raw.getContext('2d',{willReadFrequently:true});
   const distance = (a,b) => Math.hypot(a.x-b.x,a.y-b.y);
   function alt(type){game.dispatchEvent(new KeyboardEvent(type,{key:'Alt',code:'AltLeft',keyCode:18,which:18,altKey:type==='keydown',bubbles:true,cancelable:true}));}
-  function stop(message='Stopped.') {  if(apex.active?.savedFarm&&spawnSelect.value===apex.active.map){spawnSelect.value=apex.active.savedFarm.map;gardenReady=false;gardenData=null;mapping=null;gridCache=null;rebuildRarities();raritySelect.value=apex.active.savedFarm.rarity;apexFarmRestorePending=true;}running=false; awaitingPalette=false;phase='stopped';version++;captureVersion++;release();alt('keyup');pending?.();status.textContent=message; }
+  function stop(message='Stopped.') {  if(apex.active?.savedFarm&&spawnSelect.value===apex.active.map){spawnSelect.value=apex.active.savedFarm.map;gardenReady=false;gardenData=null;mapping=null;gridCache=null;rebuildRarities();raritySelect.value=apex.active.savedFarm.rarity;apexFarmRestorePending=true;}running=false;expectedLoadout=null; awaitingPalette=false;phase='stopped';version++;captureVersion++;release();alt('keyup');pending?.();status.textContent=message; }
   function wait(ms) {
     return new Promise(resolve => { const timer=setTimeout(done,ms); function done(){clearTimeout(timer);if(pending===done)pending=null;resolve();} pending=done; });
   }
@@ -469,6 +469,7 @@
       if(scene()!=='play'){release();route=[];return 'screen';}
       const wasStale=!pos||Date.now()-pos.updatedAt>1500;
       if(!await liveGate(token))return 'stopped';
+      if(!await ensureExpectedLoadout(token)){release();await wait(100);continue;}
       const before=await freshPosition(token);if(!before)return 'screen';
       if(wasStale){checkpoint=before;checkpointTime=performance.now();}
       const map=mapping.toMap(before);
@@ -672,10 +673,22 @@
     catch(error){if(token===version)stop(error.message==='SCREEN'?'Spawn into the game, then calibrate again.':error.message);}
     finally{if(token===version)release();}
   }
+  let expectedLoadout=null,lastLoadoutCheck=0;
+  function loadoutMatches(actual,expected){return Array.isArray(actual)&&actual.length===expected.length&&expected.every((p,i)=>p.type===actual[i]?.type&&p.rarity===actual[i]?.rarity);}
+  async function ensureExpectedLoadout(token){
+    if(!expectedLoadout)return true;if(Date.now()-lastLoadoutCheck<3000)return !expectedLoadout.repairPending;lastLoadoutCheck=Date.now();
+    const totals=networkLifeTotals;if(!totals||totals.id!==expectedLoadout.account){expectedLoadout=null;return true;}
+    if(Date.now()-totals.receivedAt>3000||loadoutMatches(totals.equipped,expectedLoadout.slots))return true;
+    const wanted=expectedLoadout,vision=apex.active?.searchPetal;wanted.repairPending=true;status.textContent='Petals differ from the intended build. Restoring saved loadout…';
+    if(!await selectLoadout(wanted.number,token)){expectedLoadout=wanted;return false;}
+    if(wanted.swaps.length&&!await swapTravelLoadout(token,wanted.swaps))return false;
+    if(vision&&apex.active){apex.active.searchPetal=true;apex.active.visionSince=Date.now();}
+    return true;
+  }
   async function swapTravelLoadout(token,keys=['3','4']){
     for(const key of keys){
       if(token!==version||!running||scene()!=='play')return false;
-      send('keydown',key);await wait(90);send('keyup',key);
+      send('keydown',key);await wait(90);send('keyup',key);if(expectedLoadout){const i=Number(key)-1,j=i+10;if(i>=0&&i<10&&j<expectedLoadout.slots.length){[expectedLoadout.slots[i],expectedLoadout.slots[j]]=[expectedLoadout.slots[j],expectedLoadout.slots[i]];expectedLoadout.swaps.push(key);}}
       if(token!==version||!running||scene()!=='play')return false;
       await wait(60);
     }
@@ -741,7 +754,7 @@
   const apexControls=element('div','','',panel);
   const apexEnabled=element('input','','',apexControls);apexEnabled.type='checkbox';apexEnabled.checked=true;
   apexControls.append(' Hunt Apex · Border gap: ');
-  const apexDistance=element('input','number','',apexControls);apexDistance.type='number';apexDistance.min='100';apexDistance.max='2000';apexDistance.value='200';
+  const apexDistance=element('input','number','',apexControls);apexDistance.type='number';apexDistance.min='100';apexDistance.max='2000';apexDistance.value='100';
   const apexStatus=element('div','apex-status','Apex watch ready.',apexControls);
   panel.insertBefore(apexControls,mapbox);
   const apex={queue:[],active:null,seen:new Map(),completed:0,ignored:0,lastError:null};
@@ -954,6 +967,16 @@
   }
   function shouldRejoinApex(job,etaSeconds){const rate=apexDecay(job);if(!job.lastBoss)return true;if(rate===null)return job.lastBoss.hp>.20;const stale=Math.max(0,(Date.now()-job.lastBoss.at)/1000);job.returnETA=etaSeconds;return job.lastBoss.hp-rate*(etaSeconds+stale)>.20;}
   async function selectLoadout(number,token){
+    for(let attempt=0;attempt<3;attempt++){
+      const began=Date.now(),account=networkLifeTotals?.id,preset=networkLifeTotals?.savedLoadouts?.[number];
+      if(!await sendLoadout(number,token))return false;
+      if(!preset?.length){expectedLoadout=null;return true;}
+      for(let i=0;i<12&&running&&token===version&&scene()==='play';i++){if(networkLifeTotals?.receivedAt>=began&&networkLifeTotals.id===account&&loadoutMatches(networkLifeTotals.equipped,preset)){expectedLoadout={number,account,slots:preset.map(p=>({...p})),swaps:[]};lastLoadoutCheck=Date.now();return true;}await wait(100);}
+      if(!running||token!==version||scene()!=='play')return false;
+    }
+    status.textContent='Saved loadout could not be confirmed. Retrying before movement.';return false;
+  }
+  async function sendLoadout(number,token){
     release();alt('keyup');if(!await liveGate(token)||scene()!=='play')return false;
     const valid=()=>running&&token===version&&scene()==='play'&&!document.hidden&&document.hasFocus();
     send('keydown','l');await wait(100);if(!valid()){send('keyup','l');return false;}
@@ -994,7 +1017,7 @@
     const m=mapping.toMap(position()),x=Math.floor(m.x+.5),y=Math.floor(m.y+.5),size=gardenData.size;
     return x>=0&&y>=0&&x<size&&y<size&&gardenOpen[y*size+x]&&gardenRanks[y*size+x]>=6&&gardenRanks[y*size+x]!==255;
   }
-  function apexGap(){return Math.max(100,Math.min(2000,Number(apexDistance.value)||200));}
+  function apexGap(){return Math.max(100,Math.min(2000,Number(apexDistance.value)||100));}
   function apexKnownBoss(job){
     const b=job?.lastBoss;return !job?.dead&&b&&b.hp>0?b:null;
   }
@@ -1198,7 +1221,7 @@
           release();alt('keyup');phase='waiting for mob updates';const failure=serverWorld.lastFailure;
           apexStatus.textContent='Mob updates are unavailable; holding while the stream recovers'+(failure?.reason?' ('+failure.reason+').':'.');await wait(250);continue;
         }
-        job.defeatWaitStarted=null;if(!await ensureApexVision(job,token))continue;observeApexEntities();
+        job.defeatWaitStarted=null;if(!await ensureExpectedLoadout(token))continue;if(!await ensureApexVision(job,token))continue;observeApexEntities();
         if(!job.zoneEntered&&apexInUltraZone())job.zoneEntered=true;
         if(job.zoneEntered&&!dps){dps=job.preset===3||await selectLoadout(3,token);if(!dps)continue;if(!await ensureApexVision(job,token))continue;alt('keydown');}
         const boss=apexTargetVisible(job,1800)?job.lastBoss:null;
@@ -1233,7 +1256,7 @@
         if(apexHealthGuard())apexStatus.textContent+=' · Low HP: increasing retreat distance until recovered';
         else if(Date.now()-job.damageWatch.at>15000)apexStatus.textContent+=' · No boss HP decrease observed: attack reach/build may be insufficient at this gap';
         const stand=apexStandPoint(job);
-        if(!stand){const escapeKeys=apexSafeKeys(job,[]);hold(escapeKeys);apexStatus.textContent=escapeKeys.length?'Retreating from the Apex; searching for safe floor.':`No reachable floor with the requested ${Number(apexDistance.value)||200}-unit border gap. Holding position while tracking the Apex.`;await wait(90);continue;}
+        if(!stand){const escapeKeys=apexSafeKeys(job,[]);hold(escapeKeys);apexStatus.textContent=escapeKeys.length?'Retreating from the Apex; searching for safe floor.':`No reachable floor with the requested ${Number(apexDistance.value)||100}-unit border gap. Holding position while tracking the Apex.`;await wait(90);continue;}
         const dx=stand.world.x-pos.x,dy=stand.world.y-pos.y;
         if(Math.abs(dx)<45&&Math.abs(dy)<60){hold(apexSafeKeys(job,[],.08));await wait(80);continue;}
         // Follow one short, collision-checked segment and refresh the moving boss.
@@ -1339,6 +1362,7 @@
         if(!await liveGate(token))return;
       if(farming&&apexEnabled.checked&&apex.queue.length&&!apex.active){const job=apex.queue.shift();if(!job.dead){try{await runApex(job,token);}catch(e){apex.lastError=e.message;apexStatus.textContent='Apex hunt interrupted: '+e.message;}booted=false;area=null;points=null;stage='entry';swappedBack=true;continue;}}
         const info=screenInfo();
+        if(info.kind==='play'&&swappedBack&&stage!=='entry'&&!await ensureExpectedLoadout(token))continue;
         if(info.kind!=='play'){
           if(info.kind==='death')queueDeathLoadoutSwap();
           release();route=[];booted=false;area=null;points=null;stage='entry';corner=0;swappedBack=false;awaitingPalette=false;recoveries=0;
@@ -1662,6 +1686,7 @@
       if(apex.active&&phase==='searching Apex Ultra+ zone'&&apex.active.searchPlan){const spacing=apexScanWidth(apex.active),prior=apex.active.searchPlan.spacing;if(spacing>=prior*1.3||spacing<prior*.8){release();return 'view';}}
       if(farming&&apexEnabled.checked&&apex.queue.length&&!apex.active){release();return 'apex';}
       if(scene()!=='play'){release();return 'screen';}if(realmMismatch()){release();await returnToSpawnMenu(token);return 'screen';}if(!await liveGate(token))return 'stopped';
+      if(!await ensureExpectedLoadout(token)){release();await wait(100);continue;}
       if(!pos||Date.now()-pos.updatedAt>1800){release();await preparePosition(token);const p=await freshPosition(token);if(!p)return 'screen';last=p;stuckPos=p;stuckAt=Date.now();}
       const p=position(),mp=mapping.toMap(p),now=performance.now(),dt=Math.max(.025,(now-lastTick)/1000);lastTick=now;
       if(apex.active&&phase==='searching Apex Ultra+ zone'&&!apex.active.zoneEntered&&apexInUltraZone()){apex.active.zoneEntered=true;release();return 'zone';}
@@ -1754,15 +1779,15 @@
       const username=string(),xp=f64(),level=u16(),stars=f64();
       if(!username||!Number.isFinite(xp)||xp<0||xp>Number.MAX_SAFE_INTEGER||level<1||level>10000||!Number.isFinite(stars)||stars<0)throw new Error('Invalid player totals');
       const inventory=u16();skip(inventory*7);
-      const loadout=u8();if(loadout>40)throw new Error('Unsupported loadout');const equipped=[];for(let i=0;i<loadout;i++)equipped.push({type:u16(),rarity:u8()});
+      const savedLoadouts={};const loadout=u8();if(loadout>40)throw new Error('Unsupported loadout');const equipped=[];for(let i=0;i<loadout;i++)equipped.push({type:u16(),rarity:u8()});
       if(profileProtocol==='public'){u32();const remaps=u16();if(remaps>40)throw new Error('Unsupported slot map');for(let i=0;i<remaps;i++)if(u8()>9||u8()>9)throw new Error('Invalid slot map');}
       else{string();string();const skills=u16();if(skills>4096)throw new Error('Unsupported skill table');skip(skills*2);}
       const entries=u16();if(entries>8192)throw new Error('Unsupported kill table');
       let kills=0;const pairs=new Set();
       for(let i=0;i<entries;i++){const mob=u16(),rarity=u8(),count=u32(),key=mob+':'+rarity;if(mob>8192||rarity>31||pairs.has(key))throw new Error('Invalid kill table');pairs.add(key);kills+=count;}
-      if(profileProtocol==='public'){u32();u32();const presets=u8();if(presets>20)throw new Error('Unsupported saved loadout count');for(let i=0;i<presets;i++){const key=u8(),slots=u8();if(key>=20||slots>40)throw new Error('Invalid saved loadout');skip(slots*3);}if(offset!==bytes.length)throw new Error('Unsupported public profile trailer');}
+      if(profileProtocol==='public'){u32();u32();const presets=u8();if(presets>20)throw new Error('Unsupported saved loadout count');for(let i=0;i<presets;i++){const key=u8(),slots=u8();if(key>=20||slots>40)throw new Error('Invalid saved loadout');savedLoadouts[key]=Array.from({length:slots},()=>({type:u16(),rarity:u8()}));}if(offset!==bytes.length)throw new Error('Unsupported public profile trailer');}
       else if(bytes.length-offset<9)throw new Error('Incomplete profile trailer');
-      return {xp,kills,equipped,id:'network:'+username,protocol:profileProtocol,source:'Live server player totals',receivedAt:Date.now()};
+      return {xp,kills,equipped,savedLoadouts,id:'network:'+username,protocol:profileProtocol,source:'Live server player totals',receivedAt:Date.now()};
     }catch{}return null;
   }
   function ensureLifeNetworkHook(){
