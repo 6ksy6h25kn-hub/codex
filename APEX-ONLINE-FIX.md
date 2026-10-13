@@ -66,3 +66,11 @@ The full-format native fixtures convert header and entity encoding while retaini
 **These results establish parser compatibility in controlled fixtures, not reliable live Apex kills.** No completed hunt occurred in the extended invulnerable trials. Computer lost fresh visibility after retreat. A Jungle cold-search fixture did not find its administratively spawned target within its observation window; administrative spawning may differ from live boss scheduling, and route combat with the approximate build caused delays.
 
 The configured gap remains 800 units from the border. Recorded gaps sometimes fell below that when bosses moved toward the player or exits were blocked. The controller attempts retreat; these tests do not establish normal-damage survival or guarantee the gap against game physics. Live browser testing remained unavailable in this environment because certificate validation blocked the game page.
+
+## Compact update correction (October 13)
+
+The reported live failure (491,561 rejected frames, no Apex records) exposed a decoder bug: public compact position flag 128 can coexist with angle, health, flags, radius, and player metadata. The decoder previously skipped these fields and lost packet alignment. It now reads all indicated fields after compact movement, and retains the established entity format rather than falling back to a different format on damaged frames.
+
+The regression fixture exercises all 128 combinations of the remaining flag bits with compact movement, both HP encodings, and subsequent packets. Navigation now yields stale-world and snapshot outcomes to the hunt loop instead of indefinitely waiting inside movement or route combat. Tests verify released movement and snapshot recovery.
+
+The earlier 156,374-frame native conversion trials emitted compact movement alone. They did not cover combined compact flags and therefore did not validate this case. This correction has controlled regression coverage; it has not been confirmed in a live account session. Reload the game and replace the previous script to discard records cached by the earlier decoder.

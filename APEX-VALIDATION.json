@@ -96,5 +96,10 @@
     }
   ],
   "totalAcceptedFrames": 156374,
-  "totalRejectedFrames": 0
+  "totalRejectedFrames": 0,
+  "coverageLimitation": "Prior native conversion trials emitted compact movement alone, not combined compact flags. Those counts do not validate combined compact updates.",
+  "compactUpdateRegression": {
+    "flagCombinations": 128,
+    "liveServerTest": false
+  }
 }

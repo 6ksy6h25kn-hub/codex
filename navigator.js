@@ -1082,7 +1082,7 @@
     const savedPhase=phase,fight={standDistance:150};let lastHP=Infinity,damageAt=Date.now(),encounterAt=Date.now();phase='clearing route mob';
     try{
       while(running&&token===version&&!job.dead&&scene()==='play'){
-        if(apexWorldStale()){release();alt('keyup');await wait(250);continue;}
+        if(apexWorldStale()){release();alt('keyup');return true;}
         if(!await liveGate(token))return false;
         const mob=serverWorld.entities.get(id);if(!mob||mob.hp<=0)return true;
         if(Date.now()-encounterAt>12000){(job.blockerAvoid??=new Map()).set(id,Date.now()+30000);apexStatus.textContent='Route mob is delaying the Apex hunt. Trying another path.';return true;}
@@ -1105,7 +1105,8 @@
   async function apexNavigate(destination,job,token,ignoreDeath=false){
     let attempts=0,failedPlans=0;job.navigateOutcome=null;
     while(running&&token===version&&(ignoreDeath||!job.dead)&&scene()==='play'){
-      if(!ignoreDeath&&apexWorldStale()){release();alt('keyup');apexStatus.textContent='Apex movement paused until fresh mob updates arrive.';await wait(250);continue;}
+      if(!ignoreDeath&&!job.worldRefreshed&&apexNeedsWorldRefresh()){release();alt('keyup');job.navigateOutcome='snapshot';return true;}
+      if(!ignoreDeath&&apexWorldStale()){release();alt('keyup');apexStatus.textContent='Apex movement paused until fresh mob updates arrive.';job.navigateOutcome='world';return true;}
       if(!ignoreDeath&&phase==='searching Apex Ultra+ zone'&&apexTargetVisible(job)){job.navigateOutcome='found';return true;}
       const known=!ignoreDeath&&gardenReady&&apexSafetyBosses(job).find(b=>distance(position(),b)<apexStandRadius({lastBoss:b})+80);
       if(known){
@@ -1212,7 +1213,7 @@
             apexStatus.textContent=`Searching for ${job.name}: ${searchWide?'wider biome':job.searchPlan?.specificSpawn?'mob spawn areas + Ultra+':'Ultra+'} coverage point ${searchIndex%searchTargets.length+1}/${searchTargets.length}.`;
           }
           if(apexViewCoverage(job)?.centerMayBeBeyondView)apexStatus.textContent+=' · The Apex center may be beyond the current Antennae view at this border gap.';
-          if(await apexNavigate(target,job,token)){if(!['found','zone','view','snapshot'].includes(job.navigateOutcome)){if(reacquiring)job.reacquire.index++;else searchIndex++;}searchFailures=0;if(job.zoneEntered&&!arrived){job.zoneTravelMs=Date.now()-tripBegan;arrived=true;}if(job.zoneEntered&&!dps){dps=job.preset===3||await selectLoadout(3,token);if(dps)alt('keydown');}await wait(200);}else{if(scene()==='play'&&++searchFailures>=2){if(reacquiring)job.reacquire.index++;else searchIndex++;searchFailures=0;apexStatus.textContent='Search point blocked. Trying another reachable area.';}await wait(200);}continue;
+          if(await apexNavigate(target,job,token)){if(['world','snapshot'].includes(job.navigateOutcome)){await wait(50);continue;}if(!['found','zone','view','snapshot'].includes(job.navigateOutcome)){if(reacquiring)job.reacquire.index++;else searchIndex++;}searchFailures=0;if(job.zoneEntered&&!arrived){job.zoneTravelMs=Date.now()-tripBegan;arrived=true;}if(job.zoneEntered&&!dps){dps=job.preset===3||await selectLoadout(3,token);if(dps)alt('keydown');}await wait(200);}else{if(scene()==='play'&&++searchFailures>=2){if(reacquiring)job.reacquire.index++;else searchIndex++;searchFailures=0;apexStatus.textContent='Search point blocked. Trying another reachable area.';}await wait(200);}continue;
         }
         job.reacquire=null;
         if(!job.engagedThisLife){job.travelMs=Date.now()-tripBegan;job.engagedThisLife=true;}
@@ -1825,7 +1826,7 @@
   function decodeWorld(bytes,header=null){
     const own=header||decodeOwnPlayer(bytes);if(!own)return null;
     const preferred=mobCatalogStatus.source==='Loaded public client registry'&&own.protocol==='delta-header'?'public':serverWorld.entityProtocol||(own.protocol==='delta-header'&&mobCatalogStatus.source!=='Native client registry'?'public':'legacy');
-    const first=decodeWorldEntities(bytes,own,preferred);if(first)return first;
+    const first=decodeWorldEntities(bytes,own,preferred);if(first||serverWorld.entityProtocolConfirmed)return first;
     const firstError=serverWorld.lastReject,second=decodeWorldEntities(bytes,own,preferred==='public'?'legacy':'public');if(!second)serverWorld.lastReject=firstError;return second;
   }
   function decodeWorldEntities(bytes,own,entityProtocol){
@@ -1853,8 +1854,8 @@
         // consumed even when the console hook was attached after their creation.
         let inferred=null;if(!publicEntities&&(!old||old.kind<0)&&(mask&32)){if(unknownIndex>=3)throw Error('Too many missing entity records');inferred=[0,2,1][Math.floor(attempt/3**unknownIndex)%3];unknownIndex++;}
         const e={...(old||{id,kind:-1}),at:own.at};if(inferred!==null)e.kind=inferred;
-        if(publicEntities&&mask&128){need(4);const dx=d.getInt16(o,true)/32,dy=d.getInt16(o+2,true)/32;o+=4;if(Number.isFinite(old?.x)&&Number.isFinite(old?.y)){e.x=old.x+dx;e.y=old.y+dy;const serverDt=(own.serverTime-old.poseServerTime)/1000,dt=Number.isFinite(serverDt)&&serverDt>=.005&&serverDt<1?serverDt:Math.max(.01,(own.at-(old.poseAt||own.at))/1000);e.vx=dx/dt;e.vy=dy/dt;e.poseAt=own.at;e.poseServerTime=own.serverTime;}changes.set(id,e);continue;}
-        if(mask&1){e.x=f32();e.y=f32();const serverDt=(own.serverTime-old?.poseServerTime)/1000,dt=Number.isFinite(serverDt)&&serverDt>=.005&&serverDt<1?serverDt:Math.max(.01,(own.at-(old?.poseAt||own.at))/1000);if(old&&Number.isFinite(old.x)&&Number.isFinite(old.y)){const vx=(e.x-old.x)/dt,vy=(e.y-old.y)/dt;if(Math.hypot(vx,vy)<20000){e.vx=vx;e.vy=vy;}}e.poseAt=own.at;e.poseServerTime=own.serverTime;}if(mask&2)e.angle=u16();const publicHP=publicEntities&&(mask&4)?(mask&64?1-f32():u16()/65535):null,hpLow=!publicEntities&&mask&4?u16():null;if(mask&8)e.flags=u8();if(mask&16)e.radius=f32();
+        if(publicEntities&&mask&128){need(4);const dx=d.getInt16(o,true)/32,dy=d.getInt16(o+2,true)/32;o+=4;if(Number.isFinite(old?.x)&&Number.isFinite(old?.y)){e.x=old.x+dx;e.y=old.y+dy;const serverDt=(own.serverTime-old.poseServerTime)/1000,dt=Number.isFinite(serverDt)&&serverDt>=.005&&serverDt<1?serverDt:Math.max(.01,(own.at-(old.poseAt||own.at))/1000);e.vx=dx/dt;e.vy=dy/dt;e.poseAt=own.at;e.poseServerTime=own.serverTime;}}
+        if(mask&1&&!(publicEntities&&mask&128)){e.x=f32();e.y=f32();const serverDt=(own.serverTime-old?.poseServerTime)/1000,dt=Number.isFinite(serverDt)&&serverDt>=.005&&serverDt<1?serverDt:Math.max(.01,(own.at-(old?.poseAt||own.at))/1000);if(old&&Number.isFinite(old.x)&&Number.isFinite(old.y)){const vx=(e.x-old.x)/dt,vy=(e.y-old.y)/dt;if(Math.hypot(vx,vy)<20000){e.vx=vx;e.vy=vy;}}e.poseAt=own.at;e.poseServerTime=own.serverTime;}if(mask&2)e.angle=u16();const publicHP=publicEntities&&(mask&4)?(mask&64?1-f32():u16()/65535):null,hpLow=!publicEntities&&mask&4?u16():null;if(mask&8)e.flags=u8();if(mask&16)e.radius=f32();
         if(mask&32){if(publicEntities){skip(14);e.skin=str();}else if(e.kind===0){skip(9);str();str();skip(3);}else if(e.kind===2)skip(5);else e.mobFlags=u8();}
         const hpHigh=!publicEntities&&mask&64?u16():null;
         if(mask&8){e.hpFloat=!!(e.flags&8);if(!e.hpFloat)e.hpHighBits=null;}
@@ -1864,14 +1865,14 @@
           else if(hpLow!==null)e.hp=hpLow/65535;
         }
         if(publicHP!==null)e.hp=publicHP;
-        if(e.hp!==undefined&&(!Number.isFinite(e.hp)||e.hp<-.02||e.hp>1.02))throw Error('Unsupported health encoding');if(e.hp!==undefined)e.hp=Math.max(0,Math.min(1,e.hp));if(mask&128)skip(1);changes.set(id,e);
+        if(e.hp!==undefined&&(!Number.isFinite(e.hp)||e.hp<-.02||e.hp>1.02))throw Error('Unsupported health encoding');if(e.hp!==undefined)e.hp=Math.max(0,Math.min(1,e.hp));if(!publicEntities&&mask&128)skip(1);changes.set(id,e);
       }
       context={offset:o,section:'removals'};const count=u16();lastID=0;for(let i=0;i<count;i++)removed.push(entityID());context={offset:o,section:'effects'};const effects=u16();for(let i=0;i<effects;i++){need(26);const kind=bytes[o];context={offset:o,section:'effects',index:i,kind};skip(26);if(kind===7){const points=u8();skip(points*8);}}if(o!==bytes.length)throw Error('Unsupported world trailer');
-      return {own,changes,removed,entityProtocol};
+      return {own,changes,removed,entityProtocol,entityProtocolConfirmed:!!(nc||dc||count)};
     }catch(error){if(!unknownIndex||attempt===26)serverWorld.lastReject={reason:error.message,stage:'world entities',protocol:own.protocol,entityProtocol,bytes:bytes.length,...context,at:Date.now()};if(!unknownIndex)return null;}}return null;
   }
   function acceptServerFrame(bytes){
-    if(bytes[0]===3){const totals=decodePlayerTotals(bytes);if(totals){if(networkLifeTotals&&networkLifeTotals.id!==totals.id){serverWorld.own=null;serverWorld.protocol=null;serverWorld.entityProtocol=null;serverWorld.entities.clear();}networkLifeTotals=totals;networkLifeStatus.profilesDecoded++;networkLifeStatus.profileProtocol=totals.protocol;networkLifeStatus.lastProfileAt=totals.receivedAt;}else networkLifeStatus.profilesRejected++;return;}
+    if(bytes[0]===3){const totals=decodePlayerTotals(bytes);if(totals){if(networkLifeTotals&&networkLifeTotals.id!==totals.id){serverWorld.own=null;serverWorld.protocol=null;serverWorld.entityProtocol=null;serverWorld.entityProtocolConfirmed=false;serverWorld.entities.clear();}networkLifeTotals=totals;networkLifeStatus.profilesDecoded++;networkLifeStatus.profileProtocol=totals.protocol;networkLifeStatus.lastProfileAt=totals.receivedAt;}else networkLifeStatus.profilesRejected++;return;}
     if((bytes[0]===4&&bytes.length>=34)||(bytes[0]===24&&bytes.length>=18)){
       const d=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),offset=bytes[0]===4?25:9,code=bytes[offset],names={0:'garden',3:'desert',4:'computer',5:'ocean',6:'jungle',8:'ant_hell',9:'sewers'};
       if(d.getUint16(offset+1,true)>0&&d.getUint16(offset+3,true)>0&&d.getUint32(offset+5,true)===bytes.length-offset-9){serverWorld.entities.clear();if(apex.active){apex.active.entityId=null;apex.active.zeroHP=null;apex.active.identityReset=true;apex.active.coverageSeen=null;apex.active.standTarget=null;apex.active.hazard=null;apex.active.reacquire=null;}verifiedMobTypes.clear();visualVotes.clear();visualPending.clear();visualRows=[];serverWorld.realm=names[code]||null;if(serverWorld.realm){liveRealm={id:serverWorld.realm,at:Date.now(),source:'server'};window.flowrixRealm=liveRealm;}realmShapeCache=null;}
@@ -1887,7 +1888,7 @@
       if(!frame&&!serverWorld.protocol){serverWorld.rejected++;serverWorld.lastFailure=serverWorld.lastReject;return;}
       // Publish one selected header only; a rejected candidate cannot overwrite XP or position.
       serverWorld.own=own;pos={x:own.x,y:own.y,updatedAt:own.at};window.flowrixPosition=pos;if(networkLifeTotals&&Number.isFinite(own.xp))networkLifeTotals={...networkLifeTotals,xp:own.xp};
-      if(!frame){serverWorld.rejected++;serverWorld.lastFailure=serverWorld.lastReject;return;}serverWorld.frames++;serverWorld.protocol=own.protocol;serverWorld.entityProtocol=frame.entityProtocol;serverWorld.updatedAt=own.at;
+      if(!frame){serverWorld.rejected++;serverWorld.lastFailure=serverWorld.lastReject;return;}serverWorld.frames++;serverWorld.protocol=own.protocol;serverWorld.entityProtocol=frame.entityProtocol;serverWorld.entityProtocolConfirmed=serverWorld.entityProtocolConfirmed||frame.entityProtocolConfirmed;serverWorld.updatedAt=own.at;
       for(const [id,e] of frame.changes)serverWorld.entities.set(id,e);for(const id of frame.removed)serverWorld.entities.delete(id);
       observeApexEntities();apexRecordCoverage(apex.active);return;
     }
