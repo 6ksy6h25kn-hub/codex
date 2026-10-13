@@ -29,7 +29,7 @@ The supplied offline client uses the older fixed header. The previous navigator 
 - 6,348 recorded legacy world frames pass.
 - 815 recorded world frames converted to the public client's documented optional-header layout pass, including all mask combinations.
 - Browser tests cover compressed asset discovery on both deployment hostnames, split transport frames, malformed header rejection, stats freshness, and unchanged legacy decoding.
-- Extended native offline trials are running with only the navigator's input converted to the public header layout; the native game receives its original traffic. These are controlled fixtures, not live-server tests.
+- Extended native offline trials use converted navigator input while the native game receives its original traffic. Header-only and full-format fixtures are reported separately; neither is a live-server test.
 
 The cause is supported by the public decoder and the reported counters, but live confirmation still requires an updated script running against the real server. Offline invulnerability tests do not demonstrate normal-damage survival.
 
@@ -42,7 +42,7 @@ The cause is supported by the public decoder and the reported counters, but live
 - A bounded, local template matcher can recover Apex/name labels from an existing text atlas without sending images to another service. It stops probing when registry tracking already identifies the target.
 - Missing mob records can trigger one snapshot refresh later in a hunt as well as at startup.
 
-The bitmap matcher has fixture coverage; it is a supplementary fallback, not a replacement for validated network records. Native long-run findings will be appended after the final checks.
+The bitmap matcher has fixture coverage; it is a supplementary fallback, not a replacement for validated network records. Native long-run findings are listed below.
 
 ## Search and freshness safeguards
 
@@ -51,4 +51,17 @@ The bitmap matcher has fixture coverage; it is a supplementary fallback, not a r
 - Measures Antennae scale from repeated terrain chunks in both screen axes. The camera may lead the player; the measurement checks the terrain lattice rather than assuming a centered camera. A changed view interrupts a long search route so coverage spacing can be rebuilt.
 - Adds regression tests for actual public entity field order, variable IDs and removals, compact movement, both HP encodings, stale-route release, snapshot limits, and camera-offset measurements.
 
-The latest full-format native fixtures convert header and entity encoding while retaining native world geometry. Their extended runs are still in progress; these are distinct from the earlier header-only conversions and from actual live-server sessions.
+The full-format native fixtures convert header and entity encoding while retaining native world geometry. These are distinct from the earlier header-only conversions and from actual live-server sessions.
+
+## Final validation and remaining limits
+
+- 12 packaged browser regression tests pass, including current public profiles with numeric skin IDs, slot remaps, saved loadouts, XP, kills, and equipped slots.
+- Nine native full-format fixtures completed 180 observations each, approximately 15 minutes per biome. They accepted **156,374 world frames with zero rejections and zero conversion failures**. [Detailed results](APEX-VALIDATION.json) distinguish fresh sightings from retained IDs.
+- Legacy replay still covers 6,348 recorded frames, plus 815 optional-header conversions, all 71 public mob IDs, nine biome search geometries, and simulated hunt/death/loot/farm cycles.
+- Lost-target search uses reachable, unique points ordered by walking distance. It checks the last known area for up to 60 seconds, then proceeds to wider search instead of repeatedly wrapping the same ring.
+- Tiny labels under Antennae use font-aware spacing. Large health-bar captions cannot establish a screen position. Coverage uses the smaller viewport dimension, including narrow previews.
+- Diagnostics now report live tracking separately from a retained entity ID, last-sighting age, radius, and whether the requested border gap may put the center beyond the measured view.
+
+**These results establish parser compatibility in controlled fixtures, not reliable live Apex kills.** No completed hunt occurred in the extended invulnerable trials. Computer lost fresh visibility after retreat. A Jungle cold-search fixture did not find its administratively spawned target within its observation window; administrative spawning may differ from live boss scheduling, and route combat with the approximate build caused delays.
+
+The configured gap remains 800 units from the border. Recorded gaps sometimes fell below that when bosses moved toward the player or exits were blocked. The controller attempts retreat; these tests do not establish normal-damage survival or guarantee the gap against game physics. Live browser testing remained unavailable in this environment because certificate validation blocked the game page.

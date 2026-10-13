@@ -135,11 +135,15 @@
     }
     if(!known)queueAtlasProbe(image,sx,sy,sw,sh);
   }
+  function renderedLabelScore(rarity,name){
+    const ratio=name.fontSize/rarity.fontSize;if(ratio<1.08||ratio>1.6)return Infinity;
+    const scale=name.textScale||1,gap=rarity.y-name.y;return Math.min(Math.abs(gap-26.5*scale),Math.abs(gap-(name.fontSize+rarity.fontSize)*scale));
+  }
   function learnRenderedMobTypes(){
     const pairs=[],bindings=new Map(),frameNumber=++visualFrameNumber;
     for(const rarity of visualRows.filter(r=>r.rarity===9)){
       // Names may be left-aligned to a long boss health bar; the rarity is centered on the mob.
-      const score=n=>Math.abs(rarity.y-n.y-26.5*(n.textScale||1));
+      const score=n=>renderedLabelScore(rarity,n);
       const names=visualRows.filter(n=>n.type&&n.fontSize>rarity.fontSize*1.05&&n.x<=rarity.x+20&&score(n)<Math.max(2,3*(n.textScale||1)));
       names.sort((a,b)=>score(a)-score(b));
       if(names[0]&&(!names[1]||score(names[1])-score(names[0])>.75))pairs.push({type:names[0].type,rarity:rarity.rarity,x:rarity.x,y:rarity.y});
@@ -742,10 +746,10 @@
   panel.insertBefore(apexControls,mapbox);
   const apex={queue:[],active:null,seen:new Map(),completed:0,ignored:0,lastError:null};
   function apexDiagnostics(){return {
-    world:{protocol:serverWorld.protocol||null,entityProtocol:serverWorld.entityProtocol||null,lastEntityFrameAgeMs:serverWorld.updatedAt?Date.now()-serverWorld.updatedAt:null,lastPlayerFrameAgeMs:serverWorld.own?.at?Date.now()-serverWorld.own.at:null,refreshNeeded:apexNeedsWorldRefresh(),frames:serverWorld.frames,rejected:serverWorld.rejected,records:serverWorld.entities.size,lastReject:serverWorld.lastFailure||null,apexRecords:[...serverWorld.entities.values()].filter(e=>(e.kind===1||e.kind===6)&&e.rarity>=9).map(e=>({id:e.id,type:e.type,catalog:mobIDs[e.type],screen:verifiedMobTypes.get(e.type)?.type,x:e.x,y:e.y,hp:e.hp}))},
+    world:{protocol:serverWorld.protocol||null,entityProtocol:serverWorld.entityProtocol||null,lastEntityFrameAgeMs:serverWorld.updatedAt?Date.now()-serverWorld.updatedAt:null,lastPlayerFrameAgeMs:serverWorld.own?.at?Date.now()-serverWorld.own.at:null,refreshNeeded:apexNeedsWorldRefresh(),frames:serverWorld.frames,rejected:serverWorld.rejected,records:serverWorld.entities.size,lastReject:serverWorld.lastFailure||null,apexRecords:[...serverWorld.entities.values()].filter(e=>(e.kind===1||e.kind===6)&&e.rarity>=9).map(e=>({id:e.id,type:e.type,catalog:mobIDs[e.type],screen:verifiedMobTypes.get(e.type)?.type,x:e.x,y:e.y,radius:e.radius,hp:e.hp}))},
     catalog:{...mobCatalogStatus,trusted:mobCatalogTrusted},
     screen:{lastFrameAgeMs:Date.now()-visualAt,labels:visualRows.length,pairs:visualPairs,cacheRecovery:{...atlasProbeState},learned:[...verifiedMobTypes].map(([id,v])=>({id,type:v.type,catalog:mobIDs[id]}))},
-    hunt:apex.active?{type:apex.active.type,entityId:apex.active.entityId,source:apex.active.trackingSource,searchPlan:apex.active.searchPlan,antennae:!!apex.active.searchPetal,viewScale:apex.active.viewScale,phase}:null
+    hunt:apex.active?{type:apex.active.type,entityId:apex.active.entityId,liveTracked:apexTargetVisible(apex.active),lastSeenAgeMs:apex.active.lastBoss?.at?Date.now()-apex.active.lastBoss.at:null,source:apexTargetVisible(apex.active)?apex.active.trackingSource:apex.active.lastBoss?'Last known position; awaiting a fresh entity':apex.active.trackingSource,viewCoverage:apexViewCoverage(apex.active),searchPlan:apex.active.searchPlan,antennae:!!apex.active.searchPetal,viewScale:apex.active.viewScale,phase}:null
   };}
   button(apexControls,'Copy Apex diagnostics',async()=>{const text=JSON.stringify(apexDiagnostics(),null,2);try{await navigator.clipboard.writeText(text);apexStatus.textContent='Apex diagnostics copied.';}catch{let field=apexControls.querySelector('textarea');if(!field){field=element('textarea','','',apexControls);field.style.width='100%';field.rows=6;}field.value=text;field.focus();field.select();}});
   const apexGroups={garden:'Garden',desert:'Desert',computer:'Computer',sewers:'Sewers',ocean:'Ocean',jungle:'Jungle',ant_hell:'Normal Ant Hell',fire_ant_hell:'Fire Ant Hell',termite_ant_hell:'Termite Ant Hell'};
@@ -873,14 +877,18 @@
     const byType=new Map();for(const e of serverWorld.entities.values())if((e.kind===1||e.kind===6)&&e.hp>0){const type=apexMobType(e);if(!type)continue;const key=type+':'+e.rarity;if(byType.has(key))byType.set(key,null);else byType.set(key,e);}
     const names=visualRows.filter(r=>r.type),scales=[];
     for(const rarity of visualRows.filter(r=>r.rarity!==undefined).sort((a,b)=>b.rarity-a.rarity).slice(0,60)){
-      const score=n=>Math.abs(rarity.y-n.y-26.5*(n.textScale||1)),matches=names.filter(n=>n.fontSize>rarity.fontSize*1.05&&n.x<=rarity.x+20&&score(n)<Math.max(2,3*(n.textScale||1))).sort((a,b)=>score(a)-score(b));
+      const score=n=>renderedLabelScore(rarity,n),matches=names.filter(n=>n.fontSize>rarity.fontSize*1.05&&n.x<=rarity.x+20&&score(n)<Math.max(2,3*(n.textScale||1))).sort((a,b)=>score(a)-score(b));
       if(!matches[0]||matches[1]&&score(matches[1])-score(matches[0])<=.75)continue;
       const e=byType.get(matches[0].type+':'+rarity.rarity);if(!e||Math.abs(e.x-pos.x)<500)continue;
       const scale=(rarity.x-game.width/2)/(e.x-pos.x);if(Number.isFinite(scale)&&scale>.002&&scale<5)scales.push(scale);
     }
     if(scales.length<3)return;scales.sort((a,b)=>a-b);const median=scales[Math.floor(scales.length/2)],close=scales.filter(v=>Math.abs(v-median)<median*.2);if(close.length>=3)job.viewScale={scale:median,at:now};
   }
-  function apexScanWidth(job=apex.active){const view=job?.viewScale;return job?.searchPetal&&view&&Date.now()-view.at<3000?Math.max(600,Math.min(2200,Math.floor(game.height/(view.scale*2.8)/100)*100)):600;}
+  function apexViewCoverage(job){
+    const view=job?.viewScale;if(!view||Date.now()-view.at>3000)return null;
+    const width=game.width/view.scale,height=game.height/view.scale,required=job.lastBoss?apexStandRadius(job):null;return {widthUnits:Math.round(width),heightUnits:Math.round(height),requiredCenterDistance:required===null?null:Math.round(required),centerMayBeBeyondView:required!==null&&required>Math.hypot(width,height)/2};
+  }
+  function apexScanWidth(job=apex.active){const view=job?.viewScale;return job?.searchPetal&&view&&Date.now()-view.at<3000?Math.max(600,Math.min(2200,Math.floor(Math.min(game.width,game.height)/(view.scale*2.8)/100)*100)):600;}
   function apexSpawnMask(type,grouped=false){
     if(!type||!gardenData?.map)return null;
     const groups=mobCatalog?.[type]?.groups,names=grouped?(Array.isArray(groups)?groups:Object.keys(groups||{})):[type];if(!names.length)return null;
@@ -919,11 +927,11 @@
     const age=Math.min(1.2,Math.max(0,(Date.now()-b.at)/1000)),speed=Math.hypot(b.vx||0,b.vy||0),factor=speed?Math.min(age,1000/speed):0,predicted={x:b.x+(b.vx||0)*factor,y:b.y+(b.vy||0)*factor};
     const centers=speed>50?[predicted,b]:[b];
     for(const center of centers)for(const turn of [0,1,-1,2,-2,3,-3,4,-4,5,-5,6,-6,7,-7,8]){const angle=bearing+turn*Math.PI/8;targets.push({x:center.x+Math.cos(angle)*offset,y:center.y+Math.sin(angle)*offset});}
-    return targets;
+    try{const g=grid(apexSafetyMask(job)),reachable=search(g,mapping.toMap(position())),used=new Set(),candidates=[];for(const wanted of targets){try{const cell=g.nearest(mapping.toMap(wanted),'Apex reacquisition point',8),world=mapping.toWorld(g.point(cell));if(used.has(cell)||reachable.steps[cell]<0||distance(world,b)<apexStandRadius(job))continue;used.add(cell);candidates.push({world,priority:0});}catch{}}return apexOrderTargets(g,reachable.source,candidates);}catch{return targets;}
   }
   function apexRecordCoverage(job){
     if(!job||job.dead||phase!=='searching Apex Ultra+ zone'||!pos||Date.now()-serverWorld.updatedAt>1000||serverWorld.realm&&serverWorld.realm!==mapFile(job.map))return;
-    const seen=job.coverageSeen||(job.coverageSeen=new Map()),now=Date.now(),width=600,bx=Math.floor(pos.x/width),by=Math.floor(pos.y/width),view=job.viewScale,radius=view&&now-view.at<3000?Math.max(400,Math.min(2500,game.height/view.scale*.3)):400,extent=Math.ceil(radius/width);
+    const seen=job.coverageSeen||(job.coverageSeen=new Map()),now=Date.now(),width=600,bx=Math.floor(pos.x/width),by=Math.floor(pos.y/width),view=job.viewScale,radius=view&&now-view.at<3000?Math.max(400,Math.min(2500,Math.min(game.width,game.height)/view.scale*.3)):400,extent=Math.ceil(radius/width);
     for(let y=by-extent;y<=by+extent;y++)for(let x=bx-extent;x<=bx+extent;x++)if(Math.hypot(pos.x-(x+.5)*width,pos.y-(y+.5)*width)<radius)seen.set(x+':'+y,now);
     if(seen.size>4000)for(const [key,at] of seen)if(now-at>60000)seen.delete(key);
   }
@@ -1190,17 +1198,20 @@
           const spacing=apexScanWidth(job),oldSpacing=job.searchPlan?.spacing||600;if(!searchTargets||spacing>=oldSpacing*1.3||spacing<oldSpacing*.8){searchTargets=apexSearchTargets(searchWide);searchIndex=0;}
           if(searchIndex>=searchTargets.length){searchWide=true;searchTargets=apexSearchTargets(true);searchIndex=0;}
           if(!searchTargets.length){release();apexStatus.textContent='No reachable Apex search floor with the current wall margin.';await wait(500);continue;}
-          let skipped=0;while(searchIndex<searchTargets.length&&apexRecentlyScanned(job,searchTargets[searchIndex])&&skipped++<searchTargets.length)searchIndex++;
+          const canReacquire=job.lastBoss&&Date.now()-job.lastBoss.at<60000&&job.reacquireExhaustedAt!==job.lastBoss.at;
+          let skipped=0;while(!canReacquire&&searchIndex<searchTargets.length&&apexRecentlyScanned(job,searchTargets[searchIndex])&&skipped++<searchTargets.length)searchIndex++;
           if(searchIndex>=searchTargets.length){searchTargets=apexSearchTargets(true);searchWide=true;searchIndex=searchTargets.findIndex(p=>!apexRecentlyScanned(job,p));if(searchIndex<0){searchIndex=searchTargets.length;release();apexStatus.textContent='Nearby search floor was just scanned. Watching for fresh Apex sightings.';await wait(500);continue;}}
           let target=searchTargets[searchIndex%searchTargets.length];
           let reacquiring=false;
-          if(job.lastBoss&&Date.now()-job.lastBoss.at<20000){
+          if(canReacquire){
             if(!job.reacquire)job.reacquire={targets:apexReacquireTargets(job),index:0};
-            target=job.reacquire.targets[job.reacquire.index%job.reacquire.targets.length];reacquiring=true;
-            apexStatus.textContent='Apex moved out of view. Searching around its last known position.';
-          }else{
+            if(job.reacquire.index<job.reacquire.targets.length){target=job.reacquire.targets[job.reacquire.index];reacquiring=true;apexStatus.textContent='Apex moved out of view. Checking reachable floor around its last known position.';}
+            else{job.reacquireExhaustedAt=job.lastBoss.at;job.reacquire=null;}
+          }
+          if(!reacquiring){
             apexStatus.textContent=`Searching for ${job.name}: ${searchWide?'wider biome':job.searchPlan?.specificSpawn?'mob spawn areas + Ultra+':'Ultra+'} coverage point ${searchIndex%searchTargets.length+1}/${searchTargets.length}.`;
           }
+          if(apexViewCoverage(job)?.centerMayBeBeyondView)apexStatus.textContent+=' · The Apex center may be beyond the current Antennae view at this border gap.';
           if(await apexNavigate(target,job,token)){if(!['found','zone','view','snapshot'].includes(job.navigateOutcome)){if(reacquiring)job.reacquire.index++;else searchIndex++;}searchFailures=0;if(job.zoneEntered&&!arrived){job.zoneTravelMs=Date.now()-tripBegan;arrived=true;}if(job.zoneEntered&&!dps){dps=job.preset===3||await selectLoadout(3,token);if(dps)alt('keydown');}await wait(200);}else{if(scene()==='play'&&++searchFailures>=2){if(reacquiring)job.reacquire.index++;else searchIndex++;searchFailures=0;apexStatus.textContent='Search point blocked. Trying another reachable area.';}await wait(200);}continue;
         }
         job.reacquire=null;
@@ -1721,7 +1732,8 @@
   const networkLifeStatus={attached:false,profilesDecoded:0,profilesRejected:0,lastProfileAt:0};
   function decodePlayerTotals(bytes){
     if(bytes[0]!==3)return null;
-    try{
+    const preferred=networkLifeStatus.profileProtocol||(serverWorld.protocol==='delta-header'||mobCatalogStatus.source==='Loaded public client registry'?'public':'legacy');
+    for(const profileProtocol of [preferred,preferred==='public'?'legacy':'public'])try{
       const view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);let offset=1;
       const requireBytes=n=>{if(!Number.isInteger(n)||n<0||offset+n>bytes.length)throw new Error('Truncated player profile');};
       const u8=()=>{requireBytes(1);return view.getUint8(offset++);};
@@ -1734,15 +1746,15 @@
       if(!username||!Number.isFinite(xp)||xp<0||xp>Number.MAX_SAFE_INTEGER||level<1||level>10000||!Number.isFinite(stars)||stars<0)throw new Error('Invalid player totals');
       const inventory=u16();skip(inventory*7);
       const loadout=u8();if(loadout>40)throw new Error('Unsupported loadout');const equipped=[];for(let i=0;i<loadout;i++)equipped.push({type:u16(),rarity:u8()});
-      string();string(); // Two profile metadata strings precede the allocated skill IDs.
-      const skills=u16();if(skills>4096)throw new Error('Unsupported skill table');skip(skills*2);
+      if(profileProtocol==='public'){u32();const remaps=u16();if(remaps>40)throw new Error('Unsupported slot map');for(let i=0;i<remaps;i++)if(u8()>9||u8()>9)throw new Error('Invalid slot map');}
+      else{string();string();const skills=u16();if(skills>4096)throw new Error('Unsupported skill table');skip(skills*2);}
       const entries=u16();if(entries>8192)throw new Error('Unsupported kill table');
       let kills=0;const pairs=new Set();
       for(let i=0;i<entries;i++){const mob=u16(),rarity=u8(),count=u32(),key=mob+':'+rarity;if(mob>8192||rarity>31||pairs.has(key))throw new Error('Invalid kill table');pairs.add(key);kills+=count;}
-      // Preserve compatibility with the trailing profile flags and maze XP.
-      if(bytes.length-offset<9)throw new Error('Incomplete profile trailer');
-      return {xp,kills,equipped,id:'network:'+username,source:'Live server player totals',receivedAt:Date.now()};
-    }catch{return null;}
+      if(profileProtocol==='public'){u32();u32();const presets=u8();if(presets>20)throw new Error('Unsupported saved loadout count');for(let i=0;i<presets;i++){const key=u8(),slots=u8();if(key>=20||slots>40)throw new Error('Invalid saved loadout');skip(slots*3);}if(offset!==bytes.length)throw new Error('Unsupported public profile trailer');}
+      else if(bytes.length-offset<9)throw new Error('Incomplete profile trailer');
+      return {xp,kills,equipped,id:'network:'+username,protocol:profileProtocol,source:'Live server player totals',receivedAt:Date.now()};
+    }catch{}return null;
   }
   function ensureLifeNetworkHook(){
     const net=window.Module?.flixNet;if(!net||typeof net.deliver!=='function'||lifeNetworkHook?.net===net)return;
@@ -1859,7 +1871,7 @@
     }catch(error){if(!unknownIndex||attempt===26)serverWorld.lastReject={reason:error.message,stage:'world entities',protocol:own.protocol,entityProtocol,bytes:bytes.length,...context,at:Date.now()};if(!unknownIndex)return null;}}return null;
   }
   function acceptServerFrame(bytes){
-    if(bytes[0]===3){const totals=decodePlayerTotals(bytes);if(totals){if(networkLifeTotals&&networkLifeTotals.id!==totals.id){serverWorld.own=null;serverWorld.protocol=null;serverWorld.entityProtocol=null;serverWorld.entities.clear();}networkLifeTotals=totals;networkLifeStatus.profilesDecoded++;networkLifeStatus.lastProfileAt=totals.receivedAt;}else networkLifeStatus.profilesRejected++;return;}
+    if(bytes[0]===3){const totals=decodePlayerTotals(bytes);if(totals){if(networkLifeTotals&&networkLifeTotals.id!==totals.id){serverWorld.own=null;serverWorld.protocol=null;serverWorld.entityProtocol=null;serverWorld.entities.clear();}networkLifeTotals=totals;networkLifeStatus.profilesDecoded++;networkLifeStatus.profileProtocol=totals.protocol;networkLifeStatus.lastProfileAt=totals.receivedAt;}else networkLifeStatus.profilesRejected++;return;}
     if((bytes[0]===4&&bytes.length>=34)||(bytes[0]===24&&bytes.length>=18)){
       const d=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),offset=bytes[0]===4?25:9,code=bytes[offset],names={0:'garden',3:'desert',4:'computer',5:'ocean',6:'jungle',8:'ant_hell',9:'sewers'};
       if(d.getUint16(offset+1,true)>0&&d.getUint16(offset+3,true)>0&&d.getUint32(offset+5,true)===bytes.length-offset-9){serverWorld.entities.clear();if(apex.active){apex.active.entityId=null;apex.active.zeroHP=null;apex.active.identityReset=true;apex.active.coverageSeen=null;apex.active.standTarget=null;apex.active.hazard=null;apex.active.reacquire=null;}verifiedMobTypes.clear();visualVotes.clear();visualPending.clear();visualRows=[];serverWorld.realm=names[code]||null;if(serverWorld.realm){liveRealm={id:serverWorld.realm,at:Date.now(),source:'server'};window.flowrixRealm=liveRealm;}realmShapeCache=null;}

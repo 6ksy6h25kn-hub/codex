@@ -1,0 +1,100 @@
+{
+  "method": "Native offline world; only navigator input converted to the current public header/entity encoding; native client keeps original traffic. Approximate Light/Lentil build and invulnerability for positioning.",
+  "liveServerTest": false,
+  "normalDamageSurvivalEstablished": false,
+  "allApexSearchesReliable": false,
+  "results": [
+    {
+      "biome": "garden",
+      "observations": 180,
+      "acceptedWorldFrames": 17280,
+      "rejectedWorldFrames": 0,
+      "conversionFailures": 0,
+      "freshApexObservations": 27,
+      "finalPhase": "clearing route mob",
+      "completedHunts": 0
+    },
+    {
+      "biome": "desert",
+      "observations": 180,
+      "acceptedWorldFrames": 16521,
+      "rejectedWorldFrames": 0,
+      "conversionFailures": 0,
+      "freshApexObservations": 133,
+      "finalPhase": "Apex DPS",
+      "completedHunts": 0
+    },
+    {
+      "biome": "computer",
+      "observations": 180,
+      "acceptedWorldFrames": 17731,
+      "rejectedWorldFrames": 0,
+      "conversionFailures": 0,
+      "freshApexObservations": 0,
+      "finalPhase": "searching Apex Ultra+ zone",
+      "completedHunts": 0
+    },
+    {
+      "biome": "sewers",
+      "observations": 180,
+      "acceptedWorldFrames": 15603,
+      "rejectedWorldFrames": 0,
+      "conversionFailures": 0,
+      "freshApexObservations": 180,
+      "finalPhase": "Apex DPS",
+      "completedHunts": 0
+    },
+    {
+      "biome": "ocean",
+      "observations": 180,
+      "acceptedWorldFrames": 18060,
+      "rejectedWorldFrames": 0,
+      "conversionFailures": 0,
+      "freshApexObservations": 157,
+      "finalPhase": "Apex DPS",
+      "completedHunts": 0
+    },
+    {
+      "biome": "jungle",
+      "observations": 180,
+      "acceptedWorldFrames": 16530,
+      "rejectedWorldFrames": 0,
+      "conversionFailures": 0,
+      "freshApexObservations": 178,
+      "finalPhase": "Apex DPS",
+      "completedHunts": 0
+    },
+    {
+      "biome": "normal-ant",
+      "observations": 180,
+      "acceptedWorldFrames": 18258,
+      "rejectedWorldFrames": 0,
+      "conversionFailures": 0,
+      "freshApexObservations": 180,
+      "finalPhase": "Apex DPS",
+      "completedHunts": 0
+    },
+    {
+      "biome": "fire-ant",
+      "observations": 180,
+      "acceptedWorldFrames": 18184,
+      "rejectedWorldFrames": 0,
+      "conversionFailures": 0,
+      "freshApexObservations": 180,
+      "finalPhase": "Apex DPS",
+      "completedHunts": 0
+    },
+    {
+      "biome": "termite-ant",
+      "observations": 180,
+      "acceptedWorldFrames": 18207,
+      "rejectedWorldFrames": 0,
+      "conversionFailures": 0,
+      "freshApexObservations": 180,
+      "finalPhase": "Apex DPS",
+      "completedHunts": 0
+    }
+  ],
+  "totalAcceptedFrames": 156374,
+  "totalRejectedFrames": 0
+}

@@ -22,3 +22,11 @@ Limits: these tests do not establish reliable live Apex locating in every biome 
 Validation includes biome-scoped cached sightings, expired-cache rejection, live-confirmation gating, ID rebind consistency, authoritative-registry precedence, high-speed charge buffers, all public mob IDs, nine biome search plans, movement/retreat checks, and full simulated Apex cycles.
 
 Offline native trials use an approximate build and invulnerability for controlled positioning. They do not establish normal-damage survival or attribute health reductions to the bot. Jungle kept fresh tracking through six observations after fixing erroneous screen-label overrides. Desert entered DPS, briefly lost visibility, and reacquired the same target during the 30-second observation window. Search, damage reach, and normal-damage survival still need longer live trials; these tests do not guarantee reliable hunting in every biome.
+
+## Current public protocol update
+
+The reported 0 accepted / 4,428 rejected world updates traced to changes in the public client format. The reader now handles optional player groups, cumulative varint entity IDs, compact movement, public player metadata, both delta-health encodings, and variable effect point lists. It also handles public profile metadata and saved-loadout trailers while retaining legacy support.
+
+Fresh player coordinates and mob-frame freshness are separate. A failed entity stream cannot refresh old Apex positions, and long routes pause on stale mob data. Partial-record recovery runs at most once per hunt, including late installation where some mobs are known but the Apex birth was missed.
+
+Search uses terrain-based Antennae scale, reachable last-sighting points, bounded ring searches, and distinct live-versus-cached diagnostics. Verification and outstanding gameplay limits are documented in [APEX-ONLINE-FIX.md](APEX-ONLINE-FIX.md) and [APEX-VALIDATION.json](APEX-VALIDATION.json).
