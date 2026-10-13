@@ -82,3 +82,7 @@ Initial Apex searches now contain only reachable Ultra+ floor, regardless of the
 ## Jungle zone correction
 
 The Jungle map names its difficulty-90 transition area `mythic-ultra zone`. Matching Ultra anywhere in a zone name incorrectly promoted the whole transition to rank 6. Full Ultra classification now requires an Ultra prefix; the mixed area remains rank 5 and the actual `ultra zone` remains rank 6. A browser regression checks those ranks and verifies Bush initial search points stay in the actual Ultra polygon.
+
+## Missed defeat recovery
+
+A missed network announcement previously left low-HP respawn forecasting in an unlimited wait. New rendered-text observation recognizes complete purple system defeat lines, ignores player-prefixed chat and repeated old text, and only ends matching hunts. Cached pre-existing bitmap text may still be unavailable to this observer. A 45-second unconfirmed defeat wait abandons the hunt and returns to farming through normal cleanup, without claiming a kill or entering loot mode. Regression coverage includes the reported Moth text, wrong-color and player-chat rejection, repeat suppression, unrelated jobs, and timeout boundaries.

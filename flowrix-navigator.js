@@ -261,7 +261,7 @@
     if(m){ const x=Number(m[1]),y=Number(m[2]); if(Number.isFinite(x)&&Number.isFinite(y)){pos={x,y,updatedAt:Date.now()};window.flowrixPosition=pos;} }
   }
   function inspect(text,ctx,x,y) {
-    if(typeof text!=='string')return;observePosition(text);
+    if(typeof text!=='string')return;observePosition(text);observeRenderedApexDefeat(text,ctx);
     if(ctx.canvas!==game)return;
     const label=text.trim(),now=Date.now();
     if(/you were destroyed by/i.test(label))deathSeen=now;
@@ -803,6 +803,14 @@
     for(const map of Object.values(apexGroups))if(text.toLowerCase().includes(map.toLowerCase()))return map;
     return null;
   }
+  const renderedApexDefeats=new Map();
+  function observeRenderedApexDefeat(text,ctx){
+    const match=String(text).trim().match(/^A(?:n)?\s+Apex\s+(.+?)\s+has\s+been\s+defeated\b/i);if(!match)return;
+    const color=String(ctx?.fillStyle||''),hex=color.match(/^#([0-9a-f]{6})$/i);if(!hex)return;const c=parseInt(hex[1],16),r=c>>16,g=c>>8&255,b=c&255;if(r<90||b<110||g>Math.min(r,b)*.8)return;
+    const key=String(text).trim().toLowerCase();if(renderedApexDefeats.has(key))return;renderedApexDefeats.set(key,Date.now());if(renderedApexDefeats.size>100)renderedApexDefeats.delete(renderedApexDefeats.keys().next().value);
+    const name=match[1].trim().toLowerCase();for(const job of [apex.active,...apex.queue].filter(Boolean)){if(job.dead||job.spawnedAt>Date.now())continue;if([job.name,job.type?.replace(/_/g,' ')].some(n=>String(n).toLowerCase()===name)){job.dead=true;job.killedAt=Date.now();job.defeatSource='Rendered system announcement';}}
+  }
+  function apexDefeatWaitExpired(job,now=Date.now()){return !!job.defeatWaitStarted&&now-job.defeatWaitStarted>=45000;}
   function observeServerChat(bytes){
     try{
       const d=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);let o=2;
@@ -1182,15 +1190,15 @@
         if(scene()!=='play'){
           release();alt('keyup');dps=false;
           const eta=Math.max(8,(job.travelMs||Date.now()-tripBegan)/1000+8);
-          if(shouldRejoinApex(job,eta)){phase='Apex respawn';apexStatus.textContent=job.lastBoss?`Respawning: expected Apex HP on return >20% (${Math.round(eta)}s).`:'Respawning to continue searching; Apex HP has not been observed yet.';if(!await apexEnsureSpawn(job,token))return;tripBegan=Date.now();arrived=false;job.zoneEntered=false;job.engagedThisLife=false;}
-          else{phase='waiting dead for Apex';apexStatus.textContent='Waiting for the Apex defeat announcement; estimated HP on return is below 20%.';await wait(250);}
+          if(shouldRejoinApex(job,eta)){job.defeatWaitStarted=null;phase='Apex respawn';apexStatus.textContent=job.lastBoss?`Respawning: expected Apex HP on return >20% (${Math.round(eta)}s).`:'Respawning to continue searching; Apex HP has not been observed yet.';if(!await apexEnsureSpawn(job,token))return;tripBegan=Date.now();arrived=false;job.zoneEntered=false;job.engagedThisLife=false;}
+          else{job.defeatWaitStarted??=Date.now();if(apexDefeatWaitExpired(job)){job.abandoned=true;apexStatus.textContent='Apex defeat could not be confirmed. Returning to farming.';return;}phase='waiting dead for Apex';apexStatus.textContent='Waiting for the Apex defeat announcement; estimated HP on return is below 20%. Returning to farming if no confirmation arrives within 45 seconds.';await wait(250);}
           continue;
         }
         if(apexWorldStale()){
           release();alt('keyup');phase='waiting for mob updates';const failure=serverWorld.lastFailure;
           apexStatus.textContent='Mob updates are unavailable; holding while the stream recovers'+(failure?.reason?' ('+failure.reason+').':'.');await wait(250);continue;
         }
-        if(!await ensureApexVision(job,token))continue;observeApexEntities();
+        job.defeatWaitStarted=null;if(!await ensureApexVision(job,token))continue;observeApexEntities();
         if(!job.zoneEntered&&apexInUltraZone())job.zoneEntered=true;
         if(job.zoneEntered&&!dps){dps=job.preset===3||await selectLoadout(3,token);if(!dps)continue;if(!await ensureApexVision(job,token))continue;alt('keydown');}
         const boss=apexTargetVisible(job,1800)?job.lastBoss:null;
