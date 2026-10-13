@@ -911,8 +911,8 @@
     const g=grid(),reachable=search(g,mapping.toMap(position())),buckets=new Map(),width=apexScanWidth(),special=apexSpawnMask(apex.active?.type),family=wide?apexSpawnMask(apex.active?.type,true):null;
     for(let i=0;i<g.open.length;i++){
       const ultra=gardenRanks[i]>=6&&gardenRanks[i]!==255,preferred=!!special?.[i];
-      if(!g.open[i]||reachable.steps[i]<0||!wide&&!ultra&&!preferred)continue;
-      const world=mapping.toWorld(g.point(i)),bx=Math.floor(world.x/width),by=Math.floor(world.y/width),priority=preferred?0:ultra?1:family?.[i]?2:3,key=priority+':'+bx+':'+by;
+      if(!g.open[i]||reachable.steps[i]<0||!wide&&!ultra)continue;
+      const world=mapping.toWorld(g.point(i)),bx=Math.floor(world.x/width),by=Math.floor(world.y/width),priority=ultra?0:preferred?1:family?.[i]?2:3,key=priority+':'+bx+':'+by;
       const error=Math.hypot(world.x-(bx+.5)*width,world.y-(by+.5)*width),old=buckets.get(key);
       if(!old||error<old.error)buckets.set(key,{world,error,priority});
     }
@@ -1210,7 +1210,7 @@
             else{job.reacquireExhaustedAt=job.lastBoss.at;job.reacquire=null;}
           }
           if(!reacquiring){
-            apexStatus.textContent=`Searching for ${job.name}: ${searchWide?'wider biome':job.searchPlan?.specificSpawn?'mob spawn areas + Ultra+':'Ultra+'} coverage point ${searchIndex%searchTargets.length+1}/${searchTargets.length}.`;
+            apexStatus.textContent=`Searching for ${job.name}: ${searchWide?'Ultra+ first, then wider biome':'Ultra+'} coverage point ${searchIndex%searchTargets.length+1}/${searchTargets.length}.`;
           }
           if(apexViewCoverage(job)?.centerMayBeBeyondView)apexStatus.textContent+=' · The Apex center may be beyond the current Antennae view at this border gap.';
           if(await apexNavigate(target,job,token)){if(['world','snapshot'].includes(job.navigateOutcome)){await wait(50);continue;}if(!['found','zone','view','snapshot'].includes(job.navigateOutcome)){if(reacquiring)job.reacquire.index++;else searchIndex++;}searchFailures=0;if(job.zoneEntered&&!arrived){job.zoneTravelMs=Date.now()-tripBegan;arrived=true;}if(job.zoneEntered&&!dps){dps=job.preset===3||await selectLoadout(3,token);if(dps)alt('keydown');}await wait(200);}else{if(scene()==='play'&&++searchFailures>=2){if(reacquiring)job.reacquire.index++;else searchIndex++;searchFailures=0;apexStatus.textContent='Search point blocked. Trying another reachable area.';}await wait(200);}continue;

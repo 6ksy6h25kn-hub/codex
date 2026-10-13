@@ -74,3 +74,7 @@ The reported live failure (491,561 rejected frames, no Apex records) exposed a d
 The regression fixture exercises all 128 combinations of the remaining flag bits with compact movement, both HP encodings, and subsequent packets. Navigation now yields stale-world and snapshot outcomes to the hunt loop instead of indefinitely waiting inside movement or route combat. Tests verify released movement and snapshot recovery.
 
 The earlier 156,374-frame native conversion trials emitted compact movement alone. They did not cover combined compact flags and therefore did not validate this case. This correction has controlled regression coverage; it has not been confirmed in a live account session. Reload the game and replace the previous script to discard records cached by the earlier decoder.
+
+## Ultra+ search priority
+
+Initial Apex searches now contain only reachable Ultra+ floor, regardless of the mob’s dedicated farming area. Expanded searches order all Ultra+ coverage before dedicated spawn areas, family spawn areas, and other biome floor. Fresh visible targets can still be tracked directly. Regression coverage checks initial exclusion of dedicated areas and Ultra+ precedence in expanded search.
