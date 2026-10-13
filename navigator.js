@@ -688,7 +688,7 @@
   async function swapTravelLoadout(token,keys=['3','4']){
     for(const key of keys){
       if(token!==version||!running||scene()!=='play')return false;
-      send('keydown',key);await wait(90);send('keyup',key);if(expectedLoadout){const i=Number(key)-1,j=i+10;if(i>=0&&i<10&&j<expectedLoadout.slots.length){[expectedLoadout.slots[i],expectedLoadout.slots[j]]=[expectedLoadout.slots[j],expectedLoadout.slots[i]];expectedLoadout.swaps.push(key);}}
+      send('keydown',key);await wait(90);send('keyup',key);if(expectedLoadout){const i=(Number(key)+9)%10,j=i+10;if(i>=0&&i<10&&j<expectedLoadout.slots.length){[expectedLoadout.slots[i],expectedLoadout.slots[j]]=[expectedLoadout.slots[j],expectedLoadout.slots[i]];expectedLoadout.swaps.push(key);}}
       if(token!==version||!running||scene()!=='play')return false;
       await wait(60);
     }
@@ -696,10 +696,18 @@
   }
   // Restore the saved farming preset once per arrival, including every respawn.
   // Loading L4 is idempotent; blind reserve toggles are not.
+  const antSewerFarmPetals=['stick','stick','stick','stick','powder','antennae','shell','root','magnet','bulb'];
+  function farmBuildSwapKeys(slots,ids){const keys=[];for(let i=0;i<antSewerFarmPetals.length;i++){const wanted=ids.indexOf(antSewerFarmPetals[i]);if(wanted<0)return null;if(slots?.[i]?.type===wanted)continue;if(slots?.[i+10]?.type!==wanted)return null;keys.push(String((i+1)%10));}return keys;}
+  async function applyAntSewerFarmBuild(token){
+    let ids;try{ids=Object.keys(JSON.parse(Module.FS.readFile('/data/petals.json',{encoding:'utf8'}))).sort();}catch{status.textContent='Cannot read petal registry to verify the Ant Hell/Sewers build.';return false;}
+    const keys=farmBuildSwapKeys(networkLifeTotals?.equipped,ids);if(!keys){status.textContent='Save the pictured Ant Hell/Sewers build as L4: 4 Stick, Powder, Antennae, Shell, Root, Magnet, Bulb.';return false;}
+    if(keys.length&&!await swapTravelLoadout(token,keys))return false;
+    const began=Date.now();for(let i=0;keys.length&&i<12&&running&&token===version;i++){if(networkLifeTotals?.receivedAt>began&&farmBuildSwapKeys(networkLifeTotals.equipped,ids)?.length===0)break;await wait(100);}
+    if(farmBuildSwapKeys(networkLifeTotals?.equipped,ids)?.length!==0){status.textContent='Ant Hell/Sewers petal swaps could not be confirmed. Retrying the saved build.';return false;}
+    status.textContent='Ant Hell/Sewers farming build verified.';return true;
+  }
   async function verifyFarmLoadout(token){
     release();phase='checking farm petals';
-    const before=Date.now()-(networkLifeTotals?.receivedAt||0)<3000?networkLifeTotals?.equipped?.[4]:null;
-    const antHell=spawnSelect.value.endsWith('Ant Hell');let speedConfirmed=!antHell;
     const began=Date.now();
     if(!await selectLoadout(4,token))return false;
     for(let i=0;i<12&&running&&token===version&&scene()==='play';i++){
@@ -707,18 +715,8 @@
       await wait(100);
     }
     if(!running||token!==version||scene()!=='play')return false;
-    // Ant Hell keeps the already equipped speed booster even if L4 has it in reserve.
-    if(spawnSelect.value.endsWith('Ant Hell')&&before&&networkLifeTotals?.receivedAt>began){
-      const slots=networkLifeTotals.equipped,same=p=>p&&p.type===before.type&&p.rarity===before.rarity;
-      if(!same(slots?.[4])&&same(slots?.[14])){
-        const lastProfile=networkLifeTotals.receivedAt;
-        if(!await swapTravelLoadout(token,['5']))return false;
-        for(let i=0;i<12&&running&&token===version&&scene()==='play'&&networkLifeTotals?.receivedAt<=lastProfile;i++)await wait(100);
-        if(!running||token!==version||scene()!=='play')return false;
-        speedConfirmed=networkLifeTotals?.receivedAt>lastProfile&&same(networkLifeTotals.equipped?.[4]);
-      }else speedConfirmed=same(slots?.[4]);
-    }
-    status.textContent=!antHell?'Saved L4 farm build restored.':speedConfirmed?'Saved L4 farm build restored; equipped speed petal preserved for Ant Hell.':'Saved L4 farm build restored; live slot data could not confirm the Ant Hell speed petal.';
+    if(spawnSelect.value.endsWith('Ant Hell')||spawnSelect.value==='Sewers')return applyAntSewerFarmBuild(token);
+    status.textContent='Saved L4 farm build restored.';
     return true;
   }
   async function prepareTravelLoadout(token){
@@ -758,13 +756,23 @@
   const apexStatus=element('div','apex-status','Apex watch ready.',apexControls);
   panel.insertBefore(apexControls,mapbox);
   const apex={queue:[],active:null,seen:new Map(),completed:0,ignored:0,lastError:null};
+  const apexHistory=[];
+  element('div','','Apex history · newest spawns first',apexControls);
+  const apexHistoryText=element('textarea','','',apexControls);apexHistoryText.readOnly=true;apexHistoryText.rows=8;apexHistoryText.setAttribute('aria-label','Apex spawn and loot history');Object.assign(apexHistoryText.style,{width:'100%',boxSizing:'border-box',resize:'vertical',overflowY:'auto',fontSize:'12px'});
+  function renderApexHistory(newSpawn=false){const scroll=apexHistoryText.scrollTop;apexHistoryText.value=apexHistory.length?apexHistory.map(j=>{const time=new Date(j.spawnedAt).toLocaleString(),gains=j.lootGains||[];return time+' — Apex '+j.name+' ('+j.map+')\n'+(j.historyStatus||'Queued')+' · '+(gains.length?'Loot confirmed (inventory gains during loot): '+gains.map(p=>p.count+'× '+p.name).join(', '):'Loot: not confirmed');}).join('\n\n'):'No Apex spawns recorded yet.';apexHistoryText.scrollTop=newSpawn?0:scroll;}
+  function recordApexSpawn(job){apexHistory.unshift(job);if(apexHistory.length>200)apexHistory.pop();renderApexHistory(true);}
+  function apexPetalName(type,rarity){let name='Petal #'+type;try{const registry=JSON.parse(Module.FS.readFile('/data/petals.json',{encoding:'utf8'})),key=Object.keys(registry).sort()[type];if(key)name=registry[key].name||key;}catch{}return (['Common','Uncommon','Rare','Epic','Legendary','Mythic','Ultra','Super','Unique','Apex'][rarity]||'Rarity '+rarity)+' '+name;}
+  function updateApexLoot(job,totals){if(!job?.lootInventoryStart||totals?.id!==job.lootAccount||totals.receivedAt<job.lootInventoryAt)return;const gains=[];for(const p of totals.inventory||[]){const count=p.count-(job.lootInventoryStart[p.type+':'+p.rarity]||0);if(count>0)gains.push({...p,count,name:apexPetalName(p.type,p.rarity)});}if(JSON.stringify(gains)!==JSON.stringify(job.lootGains||[])){job.lootGains=gains;renderApexHistory();}}
+  function beginApexLoot(job){job.historyStatus='Looting';const totals=networkLifeTotals;if(totals&&Date.now()-totals.receivedAt<3000){job.lootAccount=totals.id;job.lootInventoryAt=Date.now();job.lootInventoryStart=Object.fromEntries((totals.inventory||[]).map(p=>[p.type+':'+p.rarity,p.count]));}renderApexHistory();}
+  renderApexHistory();
+
   function apexDiagnostics(){return {
     world:{protocol:serverWorld.protocol||null,entityProtocol:serverWorld.entityProtocol||null,lastEntityFrameAgeMs:serverWorld.updatedAt?Date.now()-serverWorld.updatedAt:null,lastPlayerFrameAgeMs:serverWorld.own?.at?Date.now()-serverWorld.own.at:null,refreshNeeded:apexNeedsWorldRefresh(),frames:serverWorld.frames,rejected:serverWorld.rejected,records:serverWorld.entities.size,lastReject:serverWorld.lastFailure||null,apexRecords:[...serverWorld.entities.values()].filter(e=>(e.kind===1||e.kind===6)&&e.rarity>=9).map(e=>({id:e.id,type:e.type,catalog:mobIDs[e.type],screen:verifiedMobTypes.get(e.type)?.type,x:e.x,y:e.y,radius:e.radius,hp:e.hp}))},
     catalog:{...mobCatalogStatus,trusted:mobCatalogTrusted},
     screen:{lastFrameAgeMs:Date.now()-visualAt,labels:visualRows.length,pairs:visualPairs,cacheRecovery:{...atlasProbeState},learned:[...verifiedMobTypes].map(([id,v])=>({id,type:v.type,catalog:mobIDs[id]}))},
     hunt:apex.active?{type:apex.active.type,entityId:apex.active.entityId,liveTracked:apexTargetVisible(apex.active),lastSeenAgeMs:apex.active.lastBoss?.at?Date.now()-apex.active.lastBoss.at:null,source:apexTargetVisible(apex.active)?apex.active.trackingSource:apex.active.lastBoss?'Last known position; awaiting a fresh entity':apex.active.trackingSource,viewCoverage:apexViewCoverage(apex.active),searchPlan:apex.active.searchPlan,antennae:!!apex.active.searchPetal,viewScale:apex.active.viewScale,phase}:null
   };}
-  button(apexControls,'Copy Apex diagnostics',async()=>{const text=JSON.stringify(apexDiagnostics(),null,2);try{await navigator.clipboard.writeText(text);apexStatus.textContent='Apex diagnostics copied.';}catch{let field=apexControls.querySelector('textarea');if(!field){field=element('textarea','','',apexControls);field.style.width='100%';field.rows=6;}field.value=text;field.focus();field.select();}});
+  button(apexControls,'Copy Apex diagnostics',async()=>{const text=JSON.stringify(apexDiagnostics(),null,2);try{await navigator.clipboard.writeText(text);apexStatus.textContent='Apex diagnostics copied.';}catch{let field=apexControls.querySelector('textarea.apex-diagnostics');if(!field){field=element('textarea','apex-diagnostics','',apexControls);field.style.width='100%';field.rows=6;}field.value=text;field.focus();field.select();}});
   const apexGroups={garden:'Garden',desert:'Desert',computer:'Computer',sewers:'Sewers',ocean:'Ocean',jungle:'Jungle',ant_hell:'Normal Ant Hell',fire_ant_hell:'Fire Ant Hell',termite_ant_hell:'Termite Ant Hell'};
   let mobCatalog=null,mobIDs=[],mobCatalogRefresh=null,mobCatalogTrusted=false;
   const mobCatalogStatus={source:'Bundled fallback',state:'waiting',count:0,path:null,reason:null};
@@ -821,7 +829,7 @@
     const match=String(text).trim().match(/^A(?:n)?\s+Apex\s+(.+?)\s+has\s+been\s+defeated\b/i);if(!match)return;
     const color=String(ctx?.fillStyle||''),hex=color.match(/^#([0-9a-f]{6})$/i);if(!hex)return;const c=parseInt(hex[1],16),r=c>>16,g=c>>8&255,b=c&255;if(r<90||b<110||g>Math.min(r,b)*.8)return;
     const key=String(text).trim().toLowerCase();if(renderedApexDefeats.has(key))return;renderedApexDefeats.set(key,Date.now());if(renderedApexDefeats.size>100)renderedApexDefeats.delete(renderedApexDefeats.keys().next().value);
-    const name=match[1].trim().toLowerCase();for(const job of [apex.active,...apex.queue].filter(Boolean)){if(job.dead||job.spawnedAt>Date.now())continue;if([job.name,job.type?.replace(/_/g,' ')].some(n=>String(n).toLowerCase()===name)){job.dead=true;job.killedAt=Date.now();job.defeatSource='Rendered system announcement';}}
+    const name=match[1].trim().toLowerCase();for(const job of [apex.active,...apex.queue].filter(Boolean)){if(job.dead||job.spawnedAt>Date.now())continue;if([job.name,job.type?.replace(/_/g,' ')].some(n=>String(n).toLowerCase()===name)){job.dead=true;job.killedAt=Date.now();job.defeatSource='Rendered system announcement';job.historyStatus='Defeated';renderApexHistory();}}
   }
   function apexDefeatWaitExpired(job,now=Date.now()){return !!job.defeatWaitStarted&&now-job.defeatWaitStarted>=45000;}
   function observeServerChat(bytes){
@@ -833,7 +841,7 @@
       const match=text.match(/\bApex\s+(.+?)\s+(?:has\s+)?(spawned|has been defeated|been defeated|was defeated|died|killed)/i);if(!match||!loadMobCatalog())return;
       const type=Object.keys(mobCatalog).find(k=>mobCatalog[k].name.toLowerCase()===match[1].trim().toLowerCase()||k.replace(/_/g,' ')===match[1].trim().toLowerCase());if(!type)return;
       if(match[2]!=='spawned'){
-        for(const job of [apex.active,...apex.queue].filter(Boolean))if(job.type===type&&!job.dead){job.dead=true;job.killedAt=Date.now();}
+        for(const job of [apex.active,...apex.queue].filter(Boolean))if(job.type===type&&!job.dead){job.dead=true;job.killedAt=Date.now();job.historyStatus='Defeated';renderApexHistory();}
         return;
       }
       // The game currently uses #ff00ff for Apex announcements.
@@ -841,7 +849,7 @@
       const map=apexMap(type,text);if(!map){apex.ignored++;return;}
       const key=map+':'+type,now=Date.now();if(now-(apex.seen.get(key)||0)<30000)return;apex.seen.set(key,now);
       if(apex.queue.some(j=>j.type===type&&j.map===map)||apex.active?.type===type&&apex.active?.map===map)return;
-      apex.queue.push({type,map,name:mobCatalog[type].name,spawnedAt:now,dead:false,entityId:null,lastBoss:null,samples:[],travelMs:null,returnETA:null});if(apex.queue.length>16)apex.queue.shift();
+      const job={type,map,name:mobCatalog[type].name,spawnedAt:now,dead:false,entityId:null,lastBoss:null,samples:[],travelMs:null,returnETA:null};apex.queue.push(job);recordApexSpawn(job);if(apex.queue.length>16){const skipped=apex.queue.shift();skipped.historyStatus='Skipped: hunt queue full';renderApexHistory();}
       apexStatus.textContent=`Apex ${mobCatalog[type].name} detected in ${map}.`;
     }catch{}
   }
@@ -1187,7 +1195,7 @@
     return null;
   }
   async function runApex(job,token){
-    const saved={map:spawnSelect.value,rarity:raritySelect.value};job.savedFarm=saved;apex.active=job;release();travelLoadoutActive=false;
+    const saved={map:spawnSelect.value,rarity:raritySelect.value};job.savedFarm=saved;apex.active=job;job.historyStatus='Hunting';renderApexHistory();release();travelLoadoutActive=false;
     let tripBegan=Date.now(),arrived=false,dps=false,searchIndex=0,searchTargets=null,searchFailures=0,searchWide=false,lootStarted=null;
     try{
       if(mobCatalogRefresh){apexStatus.textContent='Checking the current public mob identities…';await mobCatalogRefresh;if(!running||token!==version)return;}
@@ -1264,7 +1272,7 @@
         if(Math.abs(sx)>30)keys.push(sx>0?'d':'a');if(Math.abs(sy)>45)keys.push(sy>0?'s':'w');hold(apexSafeKeys(job,keys));if(stand.retreat)apexStatus.textContent='Too close to Apex. Retreating to restore the border gap.';await wait(90);
       }
       if(!running||token!==version)return;
-      release();alt('keyup');phase='Apex loot';
+      release();alt('keyup');phase='Apex loot';beginApexLoot(job);
       let magnetReady=scene()==='play'&&job.preset===3;
       if(magnetReady){if(!await swapTravelLoadout(token,['2']))return;}
       else if(!await apexEnsureSpawn(job,token))return;
@@ -1277,8 +1285,9 @@
         if(!drops.length){await wait(800);if(Date.now()-lootStarted>2500)break;continue;}
         await apexNavigate(drops[0],job,token,true);await wait(150);
       }
-      apex.completed++;apexStatus.textContent=`Apex ${job.name} complete. Returning to ${saved.map}.`;
+      updateApexLoot(job,networkLifeTotals);job.historyStatus=job.lootGains?.length?'Looted':'Loot visit complete; no inventory gains confirmed';renderApexHistory();apex.completed++;apexStatus.textContent=`Apex ${job.name} complete. Returning to ${saved.map}.`;
     }finally{
+      if(!job.historyStatus?.startsWith('Loot')||job.historyStatus==='Looting'){job.historyStatus=job.abandoned?'Unconfirmed defeat: returned to farm':'Interrupted';renderApexHistory();}
       if(token===version){release();alt('keyup');}if(apex.active===job)apex.active=null;
       if(running&&token===version){
         if(scene()==='play')await selectLoadout(4,token);if(!running||token!==version)return;setFarmMap(saved.map,saved.rarity);
@@ -1778,7 +1787,7 @@
       const string=()=>{const length=u16();if(length>1024)throw new Error('Unsupported profile string');requireBytes(length);const value=new TextDecoder('utf-8',{fatal:true}).decode(bytes.subarray(offset,offset+length));offset+=length;return value;};
       const username=string(),xp=f64(),level=u16(),stars=f64();
       if(!username||!Number.isFinite(xp)||xp<0||xp>Number.MAX_SAFE_INTEGER||level<1||level>10000||!Number.isFinite(stars)||stars<0)throw new Error('Invalid player totals');
-      const inventory=u16();skip(inventory*7);
+      const inventoryCount=u16(),inventory=[];for(let i=0;i<inventoryCount;i++)inventory.push({type:u16(),rarity:u8(),count:u32()});
       const savedLoadouts={};const loadout=u8();if(loadout>40)throw new Error('Unsupported loadout');const equipped=[];for(let i=0;i<loadout;i++)equipped.push({type:u16(),rarity:u8()});
       if(profileProtocol==='public'){u32();const remaps=u16();if(remaps>40)throw new Error('Unsupported slot map');for(let i=0;i<remaps;i++)if(u8()>9||u8()>9)throw new Error('Invalid slot map');}
       else{string();string();const skills=u16();if(skills>4096)throw new Error('Unsupported skill table');skip(skills*2);}
@@ -1787,7 +1796,7 @@
       for(let i=0;i<entries;i++){const mob=u16(),rarity=u8(),count=u32(),key=mob+':'+rarity;if(mob>8192||rarity>31||pairs.has(key))throw new Error('Invalid kill table');pairs.add(key);kills+=count;}
       if(profileProtocol==='public'){u32();u32();const presets=u8();if(presets>20)throw new Error('Unsupported saved loadout count');for(let i=0;i<presets;i++){const key=u8(),slots=u8();if(key>=20||slots>40)throw new Error('Invalid saved loadout');savedLoadouts[key]=Array.from({length:slots},()=>({type:u16(),rarity:u8()}));}if(offset!==bytes.length)throw new Error('Unsupported public profile trailer');}
       else if(bytes.length-offset<9)throw new Error('Incomplete profile trailer');
-      return {xp,kills,equipped,savedLoadouts,id:'network:'+username,protocol:profileProtocol,source:'Live server player totals',receivedAt:Date.now()};
+      return {xp,kills,equipped,savedLoadouts,inventory,id:'network:'+username,protocol:profileProtocol,source:'Live server player totals',receivedAt:Date.now()};
     }catch{}return null;
   }
   function ensureLifeNetworkHook(){
@@ -1905,7 +1914,7 @@
     }catch(error){if(!unknownIndex||attempt===26)serverWorld.lastReject={reason:error.message,stage:'world entities',protocol:own.protocol,entityProtocol,bytes:bytes.length,...context,at:Date.now()};if(!unknownIndex)return null;}}return null;
   }
   function acceptServerFrame(bytes){
-    if(bytes[0]===3){const totals=decodePlayerTotals(bytes);if(totals){if(networkLifeTotals&&networkLifeTotals.id!==totals.id){serverWorld.own=null;serverWorld.protocol=null;serverWorld.entityProtocol=null;serverWorld.entityProtocolConfirmed=false;serverWorld.entities.clear();}networkLifeTotals=totals;networkLifeStatus.profilesDecoded++;networkLifeStatus.profileProtocol=totals.protocol;networkLifeStatus.lastProfileAt=totals.receivedAt;}else networkLifeStatus.profilesRejected++;return;}
+    if(bytes[0]===3){const totals=decodePlayerTotals(bytes);if(totals){if(networkLifeTotals&&networkLifeTotals.id!==totals.id){serverWorld.own=null;serverWorld.protocol=null;serverWorld.entityProtocol=null;serverWorld.entityProtocolConfirmed=false;serverWorld.entities.clear();}networkLifeTotals=totals;updateApexLoot(apex.active,totals);networkLifeStatus.profilesDecoded++;networkLifeStatus.profileProtocol=totals.protocol;networkLifeStatus.lastProfileAt=totals.receivedAt;}else networkLifeStatus.profilesRejected++;return;}
     if((bytes[0]===4&&bytes.length>=34)||(bytes[0]===24&&bytes.length>=18)){
       const d=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),offset=bytes[0]===4?25:9,code=bytes[offset],names={0:'garden',3:'desert',4:'computer',5:'ocean',6:'jungle',8:'ant_hell',9:'sewers'};
       if(d.getUint16(offset+1,true)>0&&d.getUint16(offset+3,true)>0&&d.getUint32(offset+5,true)===bytes.length-offset-9){serverWorld.entities.clear();if(apex.active){apex.active.entityId=null;apex.active.zeroHP=null;apex.active.identityReset=true;apex.active.coverageSeen=null;apex.active.standTarget=null;apex.active.hazard=null;apex.active.reacquire=null;}verifiedMobTypes.clear();visualVotes.clear();visualPending.clear();visualRows=[];serverWorld.realm=names[code]||null;if(serverWorld.realm){liveRealm={id:serverWorld.realm,at:Date.now(),source:'server'};window.flowrixRealm=liveRealm;}realmShapeCache=null;}
@@ -2000,5 +2009,5 @@
   loadSettings();
   visualRAF=requestAnimationFrame(visualFrame);refreshTextCache();
   mobCatalogRefresh=refreshPublicMobCatalog();
-  window.flowrixNav={stop,statsDiagnostics,apexDiagnostics,state:()=>({apex:{active:apex.active?{name:apex.active.name,map:apex.active.map,hp:apex.active.lastBoss?.hp,dead:apex.active.dead,entityId:apex.active.entityId,borderGap:apex.active.lastBoss&&pos?distance(pos,apex.active.lastBoss)-(apex.active.lastBoss.radius||0):null,targetBorderGap:apexGap(),lastSeenMs:apex.active.lastBoss?Date.now()-apex.active.lastBoss.at:null}:null,queued:apex.queue.map(j=>({name:j.name,map:j.map})),completed:apex.completed,lastError:apex.lastError},networkWorld:{frames:serverWorld.frames,rejected:serverWorld.rejected,entities:serverWorld.entities.size,realm:serverWorld.realm},position:pos,phase,running,garden:gardenReady&&gardenData?.name==='Garden',map:gardenData?.name,directMap:gardenReady,family:gardenData?.family,familyBands:gardenData?.familyBands,realm:liveRealm?.id,realmScore:realmShapeCache?.score,life:{current:currentLife?{number:currentLife.number,startedAt:currentLife.startedAt,kills:currentLife.kills,xp:currentLife.xp}:null,past:pastLives.map(v=>({...v}))},route:route.slice(),goal,patrol:patrolPreview,blocks:temporaryBlocks.size,texts:[...textPoints]}),destroy(){visualEnabled=false;cancelAnimationFrame(visualRAF);stop();clearInterval(timer);clearInterval(lifeTimer);lifeNetworkHook?.detach();lifeMedia.removeEventListener('change',layoutLifePanel);removeOverlay();host.remove();for(const name of names)window.removeEventListener(name,events,true);window.removeEventListener('blur',blur);document.removeEventListener('visibilitychange',visibility);for(const h of hooks)if(h.proto[h.name]===h.wrapped)h.proto[h.name]=h.original;}};
+  window.flowrixNav={stop,apexHistory:()=>apexHistory.map(j=>({name:j.name,map:j.map,spawnedAt:j.spawnedAt,status:j.historyStatus||'Queued',loot:j.lootGains||[]})),statsDiagnostics,apexDiagnostics,state:()=>({apex:{active:apex.active?{name:apex.active.name,map:apex.active.map,hp:apex.active.lastBoss?.hp,dead:apex.active.dead,entityId:apex.active.entityId,borderGap:apex.active.lastBoss&&pos?distance(pos,apex.active.lastBoss)-(apex.active.lastBoss.radius||0):null,targetBorderGap:apexGap(),lastSeenMs:apex.active.lastBoss?Date.now()-apex.active.lastBoss.at:null}:null,queued:apex.queue.map(j=>({name:j.name,map:j.map})),completed:apex.completed,lastError:apex.lastError},networkWorld:{frames:serverWorld.frames,rejected:serverWorld.rejected,entities:serverWorld.entities.size,realm:serverWorld.realm},position:pos,phase,running,garden:gardenReady&&gardenData?.name==='Garden',map:gardenData?.name,directMap:gardenReady,family:gardenData?.family,familyBands:gardenData?.familyBands,realm:liveRealm?.id,realmScore:realmShapeCache?.score,life:{current:currentLife?{number:currentLife.number,startedAt:currentLife.startedAt,kills:currentLife.kills,xp:currentLife.xp}:null,past:pastLives.map(v=>({...v}))},route:route.slice(),goal,patrol:patrolPreview,blocks:temporaryBlocks.size,texts:[...textPoints]}),destroy(){visualEnabled=false;cancelAnimationFrame(visualRAF);stop();clearInterval(timer);clearInterval(lifeTimer);lifeNetworkHook?.detach();lifeMedia.removeEventListener('change',layoutLifePanel);removeOverlay();host.remove();for(const name of names)window.removeEventListener(name,events,true);window.removeEventListener('blur',blur);document.removeEventListener('visibilitychange',visibility);for(const h of hooks)if(h.proto[h.name]===h.wrapped)h.proto[h.name]=h.original;}};
 })();

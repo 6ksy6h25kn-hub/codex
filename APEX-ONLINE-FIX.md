@@ -90,3 +90,9 @@ A missed network announcement previously left low-HP respawn forecasting in an u
 ## Loadout verification and 100-unit gap
 
 The default border gap is now 100 units. Public profile parsing retains saved loadouts, allowing L+number selection to wait for matching equipped petals and retry up to three times. Runtime checks every three seconds compare fresh player profiles against the intended build, including explicitly tracked Antennae, magnet, and travel/farm reserve swaps; mismatches restore the saved preset and reapply those swaps. Checks run during navigation and Apex combat as well as farming/respawn transitions. Missing saved presets or stale profiles cannot prove loadout correctness and retain existing best-effort key behavior. Browser regressions cover preset parsing, retry success, persistent mismatch failure, and restoration of slots 1/3/4/5.
+
+## Apex history and Ant Hell/Sewers build
+
+A scrollable read-only text history retains the latest 200 observed Apex spawns for the current script session, newest first, with biome, local spawn-observation time, hunt status, and loot results. Inventory counts are decoded from profiles; positive same-account inventory differences during a loot visit are displayed as confirmed inventory gains during loot. They may include other nearby drops, so the UI does not claim exclusive boss attribution. Missing data is reported as unconfirmed.
+
+Ant Hell and Sewers farming now verifies the requested active order: Stick, Stick, Stick, Stick, Powder, Antennae, Shell, Root, Magnet, Bulb. It restores L4 and corrects corresponding reserve swaps where possible. If L4 and paired reserve slots cannot supply this order, farming waits with an instruction to save the pictured setup as L4; the script cannot create arbitrary saved presets or move inventory items into unrelated slots. Existing petal rarities are preserved. Other maps retain their saved L4 build.
