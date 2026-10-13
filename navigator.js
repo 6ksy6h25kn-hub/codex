@@ -96,7 +96,7 @@
       }
     }
     for(const [id,candidates] of bindings){
-      if(candidates.size!==1){visualVotes.delete(id);continue;}
+      if(candidates.size!==1||mobCatalogTrusted&&mobIDs[id]!==[...candidates][0]){visualVotes.delete(id);verifiedMobTypes.delete(id);continue;}
       const type=[...candidates][0],old=visualVotes.get(id),vote={type,count:old?.type===type&&old.frame===frameNumber-1?old.count+1:1,frame:frameNumber};visualVotes.set(id,vote);
       if(vote.count>=3)verifiedMobTypes.set(id,{type,at:Date.now()});
     }
@@ -682,8 +682,9 @@
   };}
   button(apexControls,'Copy Apex diagnostics',async()=>{const text=JSON.stringify(apexDiagnostics(),null,2);try{await navigator.clipboard.writeText(text);apexStatus.textContent='Apex diagnostics copied.';}catch{let field=apexControls.querySelector('textarea');if(!field){field=element('textarea','','',apexControls);field.style.width='100%';field.rows=6;}field.value=text;field.focus();field.select();}});
   const apexGroups={garden:'Garden',desert:'Desert',computer:'Computer',sewers:'Sewers',ocean:'Ocean',jungle:'Jungle',ant_hell:'Normal Ant Hell',fire_ant_hell:'Fire Ant Hell',termite_ant_hell:'Termite Ant Hell'};
-  let mobCatalog=null,mobIDs=[],mobCatalogRefresh=null;
-  function loadMobCatalog(){if(mobCatalog)return true;try{mobCatalog=navigatorAsset('mobs.json');mobIDs=Object.keys(mobCatalog).sort();return true;}catch{return false;}}
+  let mobCatalog=null,mobIDs=[],mobCatalogRefresh=null,mobCatalogTrusted=false;
+  function loadMobCatalog(){if(mobCatalog)return true;try{try{mobCatalog=JSON.parse(Module.FS.readFile('/data/mobs.json',{encoding:'utf8'}));mobCatalogTrusted=true;}catch{mobCatalog=navigatorAsset('mobs.json');}mobIDs=Object.keys(mobCatalog).sort();return true;}catch{return false;}}
+  function apexMobType(e){return mobCatalogTrusted?mobIDs[e.type]:(verifiedMobTypes.get(e.type)?.type||mobIDs[e.type]);}
   function extractPublicMobCatalog(bytes){
     const text=new TextDecoder().decode(bytes);let marker=-1;
     while((marker=text.indexOf('"bee"',marker+1))>=0){
@@ -701,7 +702,7 @@
       const response=await fetch(new URL('/bundle.wasm',location.href),{cache:'no-cache',signal:controller.signal});if(!response.ok)return;
       const bytes=await response.arrayBuffer();if(bytes.byteLength>16000000)return;
       const current=extractPublicMobCatalog(bytes);if(!current)return;
-      mobCatalog=current;mobIDs=Object.keys(current).sort();
+      mobCatalog=current;mobIDs=Object.keys(current).sort();mobCatalogTrusted=true;verifiedMobTypes.clear();visualVotes.clear();
     }catch{}finally{clearTimeout(timer);}
   }
   function apexMap(type,text){
@@ -732,14 +733,38 @@
       apexStatus.textContent=`Apex ${mobCatalog[type].name} detected in ${map}.`;
     }catch{}
   }
+  const apexSightings=new Map();
+  function apexObservedRealm(){return serverWorld.realm||(liveRealm&&Date.now()-liveRealm.at<3000?liveRealm.id:null);}
+  function rememberApexSightings(){
+    const realm=apexObservedRealm();if(!realm||Date.now()-serverWorld.updatedAt>1500||!loadMobCatalog())return;
+    for(const [key,sighting] of apexSightings)if(Date.now()-sighting.at>15000)apexSightings.delete(key);
+    for(const e of serverWorld.entities.values()){
+      const type=apexMobType(e);
+      if((e.kind!==1&&e.kind!==6)||e.rarity<9||!type||!Number.isFinite(e.x)||!Number.isFinite(e.y)||!Number.isFinite(e.radius))continue;
+      const key=realm+':'+type+':'+e.id;
+      if(e.hp<=0){apexSightings.delete(key);continue;}
+      apexSightings.set(key,{type,realm,id:e.id,x:e.x,y:e.y,radius:e.radius,hp:e.hp,vx:e.vx||0,vy:e.vy||0,at:serverWorld.updatedAt});
+    }
+    while(apexSightings.size>128)apexSightings.delete(apexSightings.keys().next().value);
+  }
+  function seedApexSighting(job){
+    if(job.lastBoss||!pos)return;
+    const candidates=[...apexSightings.values()].filter(b=>b.type===job.type&&b.realm===mapFile(job.map)&&b.hp>0&&Date.now()-b.at<15000);
+    candidates.sort((a,b)=>b.at-a.at||distance(pos,a)-distance(pos,b));
+    if(candidates[0]){job.lastBoss={...candidates[0]};job.entityId=null;job.identityReset=true;job.samples=[];job.trackingSource='Recent sighting; awaiting live confirmation';}
+  }
   function observeApexEntities(){
-    const job=apex.active;if(!job||job.dead||serverWorld.realm&&serverWorld.realm!==mapFile(job.map)||!loadMobCatalog())return;
-    const tracked=serverWorld.entities.get(job.entityId),verified=tracked&&verifiedMobTypes.get(tracked.type);
+    rememberApexSightings();const job=apex.active,realm=apexObservedRealm();if(!job||job.dead||realm&&realm!==mapFile(job.map)||!loadMobCatalog())return;
+    const tracked=serverWorld.entities.get(job.entityId),verified=tracked&&!mobCatalogTrusted&&verifiedMobTypes.get(tracked.type);
     if(verified&&verified.type!==job.type){job.entityId=null;job.zeroHP=null;job.lastBoss=null;job.samples=[];job.standTarget=null;job.hazard=null;}
     if(tracked&&(tracked.kind===1||tracked.kind===6)&&tracked.rarity>=9&&(verified?.type||mobIDs[tracked.type])===job.type&&tracked.hp===0&&Date.now()-serverWorld.updatedAt<1500){if(job.zeroHP?.id!==tracked.id)job.zeroHP={id:tracked.id,at:serverWorld.updatedAt};if(serverWorld.updatedAt-job.zeroHP.at>=350){job.dead=true;job.killedAt=Date.now();job.lastBoss={...job.lastBoss,x:tracked.x,y:tracked.y,radius:tracked.radius,hp:0,at:serverWorld.updatedAt,id:tracked.id};}return;}if(tracked?.hp>0)job.zeroHP=null;
-    const candidates=[...serverWorld.entities.values()].filter(e=>(e.kind===1||e.kind===6)&&(verifiedMobTypes.get(e.type)?.type||mobIDs[e.type])===job.type&&e.rarity>=9&&Number.isFinite(e.hp)&&e.hp>0&&Number.isFinite(e.x)&&Number.isFinite(e.y));
-    const boss=job.entityId!=null?candidates.find(e=>e.id===job.entityId):candidates.sort((a,b)=>b.radius-a.radius)[0];
-    if(!boss)return;if(job.entityId!==boss.id){job.zeroHP=null;job.samples=[];job.standTarget=null;job.hazard=null;}job.trackingSource=verifiedMobTypes.has(boss.type)?'Screen-confirmed name':'Catalog ID';job.entityId=boss.id;job.identityReset=false;job.lastBoss={x:boss.x,y:boss.y,hp:boss.hp,radius:boss.radius,vx:boss.vx||0,vy:boss.vy||0,angle:boss.angle,at:serverWorld.updatedAt,id:boss.id};
+    const candidates=[...serverWorld.entities.values()].filter(e=>(e.kind===1||e.kind===6)&&apexMobType(e)===job.type&&e.rarity>=9&&Number.isFinite(e.hp)&&e.hp>0&&Number.isFinite(e.x)&&Number.isFinite(e.y));
+    let boss=job.entityId!=null?candidates.find(e=>e.id===job.entityId):candidates.sort((a,b)=>b.radius-a.radius)[0];
+    if(!boss&&!tracked&&job.lastBoss?.at>0&&Date.now()-serverWorld.updatedAt<1500&&Date.now()-job.lastBoss.at>2000){
+      const age=Math.min(10,(Date.now()-job.lastBoss.at)/1000),limit=Math.max(2000,Math.hypot(job.lastBoss.vx||0,job.lastBoss.vy||0)*age+1000);
+      boss=candidates.filter(e=>distance(e,job.lastBoss)<=limit&&e.hp<=job.lastBoss.hp+.03&&Math.abs(e.radius-job.lastBoss.radius)<=Math.max(50,job.lastBoss.radius*.25)).sort((a,b)=>distance(a,job.lastBoss)-distance(b,job.lastBoss))[0];
+    }
+    if(!boss)return;if(job.entityId!==boss.id){job.zeroHP=null;job.samples=[];job.standTarget=null;job.hazard=null;}job.trackingSource=mobCatalogTrusted?'Current game registry':verifiedMobTypes.has(boss.type)?'Screen-confirmed name':'Catalog ID';job.entityId=boss.id;job.identityReset=false;job.lastBoss={x:boss.x,y:boss.y,hp:boss.hp,radius:boss.radius,vx:boss.vx||0,vy:boss.vy||0,angle:boss.angle,at:serverWorld.updatedAt,id:boss.id};
     const observedAt=serverWorld.updatedAt||Date.now();
     if(job.samples.length&&boss.hp>job.samples.at(-1).hp+.02)job.samples=[];
     if(!job.samples.length||observedAt-job.samples.at(-1).at>700){job.samples.push({hp:boss.hp,at:observedAt});job.samples=job.samples.filter(s=>Date.now()-s.at<30000).slice(-40);}
@@ -758,7 +783,7 @@
   }
   function measureApexView(){
     const job=apex.active,now=Date.now();if(!job||job.dead||!job.searchPetal||now-(job.visionSince||now)<300||now-(job.viewMeasuredAt||0)<250||!pos||now-serverWorld.updatedAt>1000)return;job.viewMeasuredAt=now;
-    const byType=new Map();for(const e of serverWorld.entities.values())if((e.kind===1||e.kind===6)&&e.hp>0){const type=verifiedMobTypes.get(e.type)?.type||mobIDs[e.type];if(!type)continue;const key=type+':'+e.rarity;if(byType.has(key))byType.set(key,null);else byType.set(key,e);}
+    const byType=new Map();for(const e of serverWorld.entities.values())if((e.kind===1||e.kind===6)&&e.hp>0){const type=apexMobType(e);if(!type)continue;const key=type+':'+e.rarity;if(byType.has(key))byType.set(key,null);else byType.set(key,e);}
     const names=visualRows.filter(r=>r.type),scales=[];
     for(const rarity of visualRows.filter(r=>r.rarity!==undefined).sort((a,b)=>b.rarity-a.rarity).slice(0,60)){
       const score=n=>Math.abs(rarity.y-n.y-26.5*(n.textScale||1)),matches=names.filter(n=>n.fontSize>rarity.fontSize*1.05&&n.x<=rarity.x+20&&score(n)<Math.max(2,3*(n.textScale||1))).sort((a,b)=>score(a)-score(b));
@@ -873,7 +898,7 @@
   }
   function apexStandRadius(job){
     const b=job.lastBoss,moving=Date.now()-b.at<1500;
-    return (b.radius||0)+apexGap()+apexHealthGuard()+80+(moving?Math.min(170,Math.hypot(b.vx||0,b.vy||0)*.15):0);
+    return (b.radius||0)+apexGap()+apexHealthGuard()+80+(moving?Math.min(450,Math.hypot(b.vx||0,b.vy||0)*.25):0);
   }
   function apexSafetyBosses(job){
     if(job?.dead)return [];
@@ -1035,6 +1060,7 @@
       if(mobCatalogRefresh){apexStatus.textContent='Checking the current public mob identities…';await mobCatalogRefresh;if(!running||token!==version)return;}
       setFarmMap(job.map,'Ultra+');phase='Apex travel';
       if(!await apexEnsureSpawn(job,token))return;
+      seedApexSighting(job);observeApexEntities();
       // A console hook attached mid-life can receive coordinates without the original mob type records.
       if(!job.worldRefreshed&&apexNeedsWorldRefresh()){
         job.worldRefreshed=true;apexStatus.textContent='Refreshing incomplete mob records through the spawn menu…';
