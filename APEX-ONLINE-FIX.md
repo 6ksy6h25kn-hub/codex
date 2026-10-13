@@ -120,3 +120,5 @@ Ant Hell family patrols now append a repeated serpentine interior sweep with 600
 ## Bounded loadout verification
 
 Saved-loadout comparisons that never confirm no longer trap entrance navigation. After three completed key-selection attempts, the script reports an unconfirmed build and continues without that comparison guard until a later build selection. Runtime repairs are capped at two per selected build; persistent inconsistencies disable that guard with a warning. This prevents automatic loadout checking itself from repeatedly reloading presets. It does not prove the unconfirmed build matches the screenshot. Diagnostics expose warnings and unconfirmed-selection/repair counters. Regression coverage checks bounded fallback and repair suspension.
+
+Ant Hell patrols are now capped at nine points: the four existing outer points, center, and up to four spread interior points. This replaces the dense 600-unit sweep. Termite’s marked second point remains intact. Regression coverage checks the nine-point cap, unique in-zone targets, and spread across the interior.
