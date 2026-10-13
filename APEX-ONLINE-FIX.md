@@ -124,3 +124,5 @@ Saved-loadout comparisons that never confirm no longer trap entrance navigation.
 Ant Hell patrols are now capped at nine points: the four existing outer points, center, and up to four spread interior points. This replaces the dense 600-unit sweep. Termite’s marked second point remains intact. Regression coverage checks the nine-point cap, unique in-zone targets, and spread across the interior.
 
 Ant Hell farming now restores the original four marked patrol points. Each patrol leg routes through the existing center before reaching the next point, crossing the middle repeatedly without adding numbered patrol points. Termite’s original marked second point remains. Regression coverage verifies four unique in-zone targets and center-first route composition.
+
+Ant Hell now uses six patrol points: the original four outer points plus two points forming a horizontal middle row. The route crosses that row directly; the center detours have been removed. The middle pair is inserted after the first two original points, preserving Termite’s marked second point. Regression coverage verifies six unique in-zone targets and a separated middle pair at matching height.
