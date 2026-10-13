@@ -1142,13 +1142,15 @@
       for(let y=Math.max(0,Math.floor(m.y-ry));y<Math.min(gardenData.size,Math.ceil(m.y+ry));y++)for(let x=Math.max(0,Math.floor(m.x-rx));x<Math.min(gardenData.size,Math.ceil(m.x+rx));x++)if(((x-m.x)/rx)**2+((y-m.y)/ry)**2<1)mask[y*gardenData.size+x]=0;
     }return mask;
   }
+  function apexRouteAttackable(e){return !!e&&e.kind===1&&e.rarity<9&&e.hp>0&&apexMobType(e)!=='sandstorm';}
   async function clearApexBlocker(id,job,token){
+    if(!apexRouteAttackable(serverWorld.entities.get(id)))return true;
     const savedPhase=phase,fight={standDistance:150};let lastHP=Infinity,damageAt=Date.now(),encounterAt=Date.now();phase='clearing route mob';
     try{
       while(running&&token===version&&!job.dead&&scene()==='play'){
         if(apexWorldStale()){release();alt('keyup');return true;}
         if(!await liveGate(token))return false;
-        const mob=serverWorld.entities.get(id);if(!mob||mob.hp<=0)return true;
+        const mob=serverWorld.entities.get(id);if(!apexRouteAttackable(mob))return true;
         if(Date.now()-encounterAt>12000){(job.blockerAvoid??=new Map()).set(id,Date.now()+30000);apexStatus.textContent='Route mob is delaying the Apex hunt. Trying another path.';return true;}
         if(mob.hp<lastHP-1e-7){lastHP=mob.hp;damageAt=Date.now();}else if(Date.now()-damageAt>6000){
           (job.blockerAvoid??=new Map()).set(id,Date.now()+20000);apexStatus.textContent='Route mob is taking no damage. Continuing the Apex search by another path.';return true;
@@ -1744,7 +1746,7 @@
       const vx=target.x-segmentFrom.x,vy=target.y-segmentFrom.y,len=Math.hypot(vx,vy)||1,progress=((p.x-segmentFrom.x)*vx+(p.y-segmentFrom.y)*vy)/(len*len),look=Math.max(0,Math.min(1,progress+Math.max(100,Math.min(180,measuredSpeed*.4))/len));
       const steerX=distance(p,target)<100?dx:segmentFrom.x+vx*look-p.x,steerY=distance(p,target)<100?dy:segmentFrom.y+vy*look-p.y;
       if(apex.active&&!apex.active.dead){const length=Math.hypot(steerX,steerY)||1,advance=Math.max(150,Math.min(500,measuredSpeed*.4)),ahead={x:p.x+steerX/length*advance,y:p.y+steerY/length*advance},threats=apexThreats();
-        const blocker=threats.filter(e=>e.kind===1&&e.id!==apex.active.entityId&&e.rarity<9&&!(apex.active.blockerAvoid?.get(e.id)>Date.now())&&distance(ahead,e)<(e.radius||20)+150&&distance(ahead,e)<distance(p,e)).sort((a,b)=>distance(p,a)-distance(p,b))[0];
+        const blocker=threats.filter(e=>apexRouteAttackable(e)&&e.id!==apex.active.entityId&&!(apex.active.blockerAvoid?.get(e.id)>Date.now())&&distance(ahead,e)<(e.radius||20)+150&&distance(ahead,e)<distance(p,e)).sort((a,b)=>distance(p,a)-distance(p,b))[0];
         if(blocker){apex.active.blockerId=blocker.id;release();return 'engage';}
         if(threats.some(e=>e.kind===3&&distance(ahead,e)<(e.radius||20)+75&&distance(ahead,e)<distance(p,e)-10)){release();return 'recover';}}
       const desired=Math.atan2(steerY,steerX),laneError=Math.abs((p.x-segmentFrom.x)*vy-(p.y-segmentFrom.y)*vx)/len;

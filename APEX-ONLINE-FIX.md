@@ -128,3 +128,7 @@ Ant Hell farming now restores the original four marked patrol points. Each patro
 Ant Hell now uses six patrol points: the original four outer points plus two points forming a horizontal middle row. The route crosses that row directly; the center detours have been removed. The middle pair is inserted after the first two original points, preserving Termite’s marked second point. Regression coverage verifies six unique in-zone targets and a separated middle pair at matching height.
 
 The six-point Ant Hell patrol now follows the requested two-row arrangement: top left → top middle → top right → bottom right → bottom middle → bottom left. Original four corner positions and their spacing remain, with one midpoint added to each original row. The earlier extra middle row is removed. Regression coverage checks ascending top X, descending bottom X, row heights, and matching outer spacing.
+
+## Sandstorm route targets
+
+Apex travel no longer chooses sandstorms as route-clearing attack targets, and already selected sandstorms are released immediately. This is a type-based exclusion because ownership is not established by the current decoder; ordinary wild sandstorms are also excluded from route combat. Real Apex Sandstorm tracking and hunting remain unchanged. Regression coverage checks sandstorm rejection, normal hostile mob eligibility and early exit for a selected sandstorm.
