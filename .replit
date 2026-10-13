@@ -1,0 +1,11 @@
+run = "npm start"
+entrypoint = "server.cjs"
+
+[deployment]
+run = ["sh", "-c", "npm start"]
+build = ["sh", "-c", "npm ci && npx playwright install chromium"]
+deploymentTarget = "vm"
+
+[[ports]]
+localPort = 3000
+externalPort = 80

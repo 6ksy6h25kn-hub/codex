@@ -1,0 +1,8 @@
+{
+  "name": "flowrix-private-browser",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {"start": "node server.cjs", "test": "node --test test/*.test.cjs", "install:browser": "playwright install chromium"},
+  "engines": {"node": ">=20"},
+  "dependencies": {"playwright": "1.62.1"}
+}

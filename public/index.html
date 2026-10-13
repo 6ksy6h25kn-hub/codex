@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Flowrix remote game</title><link rel="stylesheet" href="/style.css"><script defer src="/viewer.js"></script></head>
+<body>
+<header><h1>Flowrix remote game</h1><span id="status" role="status">Connecting…</span></header>
+<nav aria-label="Farming controls">
+  <button id="inject">Reload script</button>
+  <label>Biome <select id="biome"><option>Garden</option><option>Desert</option><option>Computer</option><option>Sewers</option><option>Ocean</option><option>Jellyfish zone</option><option>Jungle</option><option>Normal Ant Hell</option><option>Fire Ant Hell</option><option>Termite Ant Hell</option></select></label>
+  <label>Rarity <select id="rarity"><option>Ultra+</option><option>Ultra</option><option>Mythic</option><option>Legendary</option><option>Epic</option><option>Rare</option><option>Uncommon</option><option>Common</option><option>Any rarity</option></select></label>
+  <button id="start">Start farming</button><button id="stop">Stop / manual play</button>
+</nav>
+<p>Click or touch the game to control it. Keyboard controls work when the screen is focused. To type on mobile, tap the game’s field, then use “Send text.” Farming runs on the server while this viewer is closed.</p>
+<div id="screen" tabindex="0" aria-label="Remote game screen. Click to focus and use keyboard controls."><img id="frame" alt="Live game screen from the server browser" draggable="false" width="1280" height="900"></div>
+<section aria-label="Mobile and text controls">
+  <form id="text-form"><label>Send text to the game’s focused field <input id="text" type="password" autocomplete="off" placeholder="Game login or panel text"></label><button>Send text</button></form>
+  <div class="keys"><button data-key="ArrowUp">↑</button><button data-key="w">W</button><button data-key="a">A</button><button data-key="s">S</button><button data-key="d">D</button><button data-key="ArrowDown">↓</button><button data-key="Enter">Enter</button><button data-key="Backspace">⌫</button><button data-key="Space">Space</button><button data-key="Alt">Alt</button><button data-key="Escape">Esc</button><button data-key="l">L</button><button data-key="1">1</button><button data-key="2">2</button><button data-key="3">3</button><button data-key="4">4</button><button data-key="5">5</button></div>
+</section>
+<p id="details"></p>
+</body></html>
