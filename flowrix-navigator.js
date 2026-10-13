@@ -232,7 +232,27 @@
   const raw = document.createElement('canvas'), rc = raw.getContext('2d',{willReadFrequently:true});
   const distance = (a,b) => Math.hypot(a.x-b.x,a.y-b.y);
   function alt(type){game.dispatchEvent(new KeyboardEvent(type,{key:'Alt',code:'AltLeft',keyCode:18,which:18,altKey:type==='keydown',bubbles:true,cancelable:true}));}
-  function stop(message='Stopped.') {  if(apex.active?.savedFarm&&spawnSelect.value===apex.active.map){spawnSelect.value=apex.active.savedFarm.map;gardenReady=false;gardenData=null;mapping=null;gridCache=null;rebuildRarities();raritySelect.value=apex.active.savedFarm.rarity;apexFarmRestorePending=true;}running=false;expectedLoadout=null; awaitingPalette=false;phase='stopped';version++;captureVersion++;release();alt('keyup');pending?.();status.textContent=message; }
+  const autoRecovery={enabled:false,pending:null,attempts:[],lastReason:null,lastProgress:Date.now(),point:null,phase:null,bossHP:null,generation:0};
+  function recoveryReason(now=Date.now()){
+    if(!autoRecovery.enabled||!running||autoRecovery.pending||document.hidden||!document.hasFocus())return null;
+    if(pos&&(!autoRecovery.point||distance(pos,autoRecovery.point)>100)){autoRecovery.point={x:pos.x,y:pos.y};autoRecovery.lastProgress=now;}
+    if(autoRecovery.phase!==phase){autoRecovery.phase=phase;autoRecovery.lastProgress=now;}
+    const boss=apex.active?.lastBoss;if(boss&&apexTargetVisible(apex.active)&&Number.isFinite(boss.hp)){if(autoRecovery.bossHP===null||boss.hp<autoRecovery.bossHP-.001)autoRecovery.lastProgress=now;autoRecovery.bossHP=boss.hp;}else autoRecovery.bossHP=null;
+    const own=serverWorld.own;if(own&&now-own.at>20000&&scene()==='play')return 'Player data stopped updating';
+    if(apex.active&&!apex.active.dead&&serverWorld.rejected>20&&now-serverWorld.updatedAt>20000)return 'Mob stream did not recover';
+    if(/waiting dead|Apex loot|waiting for.*focus/i.test(phase))return null;
+    if(now-autoRecovery.lastProgress>120000)return 'No movement or phase progress for two minutes';
+    return null;
+  }
+  function scheduleRecovery(reason){
+    if(!autoRecovery.enabled||autoRecovery.pending)return false;const now=Date.now();autoRecovery.attempts=autoRecovery.attempts.filter(t=>now-t<600000);
+    if(autoRecovery.attempts.length>=5){stop('Automatic recovery paused after five retries in ten minutes: '+reason+'. Check the game, then press Start.');return false;}
+    autoRecovery.attempts.push(now);autoRecovery.lastReason=reason;const delay=Math.min(30000,1000*2**(autoRecovery.attempts.length-1));
+    stop('Recovering automatically: '+reason,true);const generation=autoRecovery.generation;
+    autoRecovery.pending=setTimeout(()=>{autoRecovery.pending=null;if(!autoRecovery.enabled||autoRecovery.generation!==generation)return;temporaryBlocks.clear();obstacleVersion++;gridCache=null;gardenReady=false;gardenData=null;mapping=null;screenCache=null;frameCache=null;travelLoadoutActive=false;deathLoadoutSwapPending=true;refreshTextCache();autoRecovery.lastProgress=Date.now();autoRecovery.point=null;start(true);},delay);
+    return true;
+  }
+  function stop(message='Stopped.',preserveRecovery=false) {  if(!preserveRecovery){autoRecovery.enabled=false;autoRecovery.generation++;if(autoRecovery.pending){clearTimeout(autoRecovery.pending);autoRecovery.pending=null;}}if(apex.active?.savedFarm&&spawnSelect.value===apex.active.map){spawnSelect.value=apex.active.savedFarm.map;gardenReady=false;gardenData=null;mapping=null;gridCache=null;rebuildRarities();raritySelect.value=apex.active.savedFarm.rarity;apexFarmRestorePending=true;}running=false;expectedLoadout=null; awaitingPalette=false;phase='stopped';version++;captureVersion++;release();alt('keyup');pending?.();status.textContent=message; }
   function wait(ms) {
     return new Promise(resolve => { const timer=setTimeout(done,ms); function done(){clearTimeout(timer);if(pending===done)pending=null;resolve();} pending=done; });
   }
@@ -1364,7 +1384,7 @@
     phase='travel swap';if(!await prepareTravelLoadout(token))throw new Error('SCREEN');return true;
   }
   async function start(farming){
-    if(running||capturing)return;stop();running=true;const token=++version;root.activeElement?.blur();teaching=false;saveSettings();
+    if(running||capturing)return;const recovering=autoRecovery.enabled;stop('Starting.',recovering);autoRecovery.enabled=!!farming;if(!recovering)autoRecovery.attempts=[];autoRecovery.lastProgress=Date.now();autoRecovery.point=null;autoRecovery.phase=null;running=true;const token=++version;root.activeElement?.blur();teaching=false;saveSettings();
     let booted=false,area=null,points=null,stage='entry',corner=0,swappedBack=false,lastClick=0,spawnChosen=false,lastScreen='',recoveries=0;
     try{
       while(running&&token===version){
@@ -1421,7 +1441,7 @@
         }else if(stage==='center')stage='patrol';else corner=(corner+1)%points.corners.length;
         await wait(180);
       }
-    }catch(error){if(token===version)stop(error.message);}finally{if(token===version)release();}
+    }catch(error){if(token===version){if(!farming||!scheduleRecovery(error.message))stop(error.message);}}finally{if(token===version)release();}
   }
   function go(){return start(false);}
   function button(parent,text,action){const b=element('button','',text,parent);b.onclick=action;}
@@ -2004,10 +2024,11 @@
       for(const p of samples){vc.fillStyle='#ffdd00';vc.fillRect(p.map.x-1,p.map.y-1,3,3);}
       if(mapping&&pos){const p=mapping.toMap(pos);vc.strokeStyle='#00ff00';vc.beginPath();vc.moveTo(p.x-4,p.y);vc.lineTo(p.x+4,p.y);vc.moveTo(p.x,p.y-4);vc.lineTo(p.x,p.y+4);vc.stroke();}
       if(mapping&&goal){const p=mapping.toMap(goal);vc.strokeStyle='#ff3333';vc.beginPath();vc.arc(p.x,p.y,3,0,Math.PI*2);vc.stroke();}
-    }catch(error){stop(error.message);}
+    }catch(error){if(running&&!scheduleRecovery(error.message))stop(error.message);}
   },150);
+  const recoveryTimer=setInterval(()=>{const reason=recoveryReason();if(reason)scheduleRecovery(reason);},2500);
   loadSettings();
   visualRAF=requestAnimationFrame(visualFrame);refreshTextCache();
   mobCatalogRefresh=refreshPublicMobCatalog();
-  window.flowrixNav={stop,apexHistory:()=>apexHistory.map(j=>({name:j.name,map:j.map,spawnedAt:j.spawnedAt,status:j.historyStatus||'Queued',loot:j.lootGains||[]})),statsDiagnostics,apexDiagnostics,state:()=>({apex:{active:apex.active?{name:apex.active.name,map:apex.active.map,hp:apex.active.lastBoss?.hp,dead:apex.active.dead,entityId:apex.active.entityId,borderGap:apex.active.lastBoss&&pos?distance(pos,apex.active.lastBoss)-(apex.active.lastBoss.radius||0):null,targetBorderGap:apexGap(),lastSeenMs:apex.active.lastBoss?Date.now()-apex.active.lastBoss.at:null}:null,queued:apex.queue.map(j=>({name:j.name,map:j.map})),completed:apex.completed,lastError:apex.lastError},networkWorld:{frames:serverWorld.frames,rejected:serverWorld.rejected,entities:serverWorld.entities.size,realm:serverWorld.realm},position:pos,phase,running,garden:gardenReady&&gardenData?.name==='Garden',map:gardenData?.name,directMap:gardenReady,family:gardenData?.family,familyBands:gardenData?.familyBands,realm:liveRealm?.id,realmScore:realmShapeCache?.score,life:{current:currentLife?{number:currentLife.number,startedAt:currentLife.startedAt,kills:currentLife.kills,xp:currentLife.xp}:null,past:pastLives.map(v=>({...v}))},route:route.slice(),goal,patrol:patrolPreview,blocks:temporaryBlocks.size,texts:[...textPoints]}),destroy(){visualEnabled=false;cancelAnimationFrame(visualRAF);stop();clearInterval(timer);clearInterval(lifeTimer);lifeNetworkHook?.detach();lifeMedia.removeEventListener('change',layoutLifePanel);removeOverlay();host.remove();for(const name of names)window.removeEventListener(name,events,true);window.removeEventListener('blur',blur);document.removeEventListener('visibilitychange',visibility);for(const h of hooks)if(h.proto[h.name]===h.wrapped)h.proto[h.name]=h.original;}};
+  window.flowrixNav={stop,apexHistory:()=>apexHistory.map(j=>({name:j.name,map:j.map,spawnedAt:j.spawnedAt,status:j.historyStatus||'Queued',loot:j.lootGains||[]})),statsDiagnostics,apexDiagnostics,state:()=>({recovery:{enabled:autoRecovery.enabled,pending:!!autoRecovery.pending,attempts:autoRecovery.attempts.length,lastReason:autoRecovery.lastReason},apex:{active:apex.active?{name:apex.active.name,map:apex.active.map,hp:apex.active.lastBoss?.hp,dead:apex.active.dead,entityId:apex.active.entityId,borderGap:apex.active.lastBoss&&pos?distance(pos,apex.active.lastBoss)-(apex.active.lastBoss.radius||0):null,targetBorderGap:apexGap(),lastSeenMs:apex.active.lastBoss?Date.now()-apex.active.lastBoss.at:null}:null,queued:apex.queue.map(j=>({name:j.name,map:j.map})),completed:apex.completed,lastError:apex.lastError},networkWorld:{frames:serverWorld.frames,rejected:serverWorld.rejected,entities:serverWorld.entities.size,realm:serverWorld.realm},position:pos,phase,running,garden:gardenReady&&gardenData?.name==='Garden',map:gardenData?.name,directMap:gardenReady,family:gardenData?.family,familyBands:gardenData?.familyBands,realm:liveRealm?.id,realmScore:realmShapeCache?.score,life:{current:currentLife?{number:currentLife.number,startedAt:currentLife.startedAt,kills:currentLife.kills,xp:currentLife.xp}:null,past:pastLives.map(v=>({...v}))},route:route.slice(),goal,patrol:patrolPreview,blocks:temporaryBlocks.size,texts:[...textPoints]}),destroy(){visualEnabled=false;cancelAnimationFrame(visualRAF);stop();clearInterval(timer);clearInterval(lifeTimer);clearInterval(recoveryTimer);lifeNetworkHook?.detach();lifeMedia.removeEventListener('change',layoutLifePanel);removeOverlay();host.remove();for(const name of names)window.removeEventListener(name,events,true);window.removeEventListener('blur',blur);document.removeEventListener('visibilitychange',visibility);for(const h of hooks)if(h.proto[h.name]===h.wrapped)h.proto[h.name]=h.original;}};
 })();
