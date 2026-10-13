@@ -615,7 +615,8 @@
   // Loading L4 is idempotent; blind reserve toggles are not.
   async function verifyFarmLoadout(token){
     release();phase='checking farm petals';
-    const before=networkLifeTotals?.equipped?.[4];
+    const before=Date.now()-(networkLifeTotals?.receivedAt||0)<3000?networkLifeTotals?.equipped?.[4]:null;
+    const antHell=spawnSelect.value.endsWith('Ant Hell');let speedConfirmed=!antHell;
     const began=Date.now();
     if(!await selectLoadout(4,token))return false;
     for(let i=0;i<12&&running&&token===version&&scene()==='play';i++){
@@ -627,10 +628,14 @@
     if(spawnSelect.value.endsWith('Ant Hell')&&before&&networkLifeTotals?.receivedAt>began){
       const slots=networkLifeTotals.equipped,same=p=>p&&p.type===before.type&&p.rarity===before.rarity;
       if(!same(slots?.[4])&&same(slots?.[14])){
+        const lastProfile=networkLifeTotals.receivedAt;
         if(!await swapTravelLoadout(token,['5']))return false;
-      }
+        for(let i=0;i<12&&running&&token===version&&scene()==='play'&&networkLifeTotals?.receivedAt<=lastProfile;i++)await wait(100);
+        if(!running||token!==version||scene()!=='play')return false;
+        speedConfirmed=networkLifeTotals?.receivedAt>lastProfile&&same(networkLifeTotals.equipped?.[4]);
+      }else speedConfirmed=same(slots?.[4]);
     }
-    status.textContent='Saved L4 farm build restored: slots 3 and 4 checked; Ant Hell speed petal preserved.';
+    status.textContent=!antHell?'Saved L4 farm build restored.':speedConfirmed?'Saved L4 farm build restored; equipped speed petal preserved for Ant Hell.':'Saved L4 farm build restored; live slot data could not confirm the Ant Hell speed petal.';
     return true;
   }
   async function prepareTravelLoadout(token){
@@ -730,11 +735,11 @@
   function observeApexEntities(){
     const job=apex.active;if(!job||job.dead||serverWorld.realm&&serverWorld.realm!==mapFile(job.map)||!loadMobCatalog())return;
     const tracked=serverWorld.entities.get(job.entityId),verified=tracked&&verifiedMobTypes.get(tracked.type);
-    if(verified&&verified.type!==job.type){job.entityId=null;job.lastBoss=null;job.samples=[];job.standTarget=null;job.hazard=null;}
+    if(verified&&verified.type!==job.type){job.entityId=null;job.zeroHP=null;job.lastBoss=null;job.samples=[];job.standTarget=null;job.hazard=null;}
     if(tracked&&(tracked.kind===1||tracked.kind===6)&&tracked.rarity>=9&&(verified?.type||mobIDs[tracked.type])===job.type&&tracked.hp===0&&Date.now()-serverWorld.updatedAt<1500){if(job.zeroHP?.id!==tracked.id)job.zeroHP={id:tracked.id,at:serverWorld.updatedAt};if(serverWorld.updatedAt-job.zeroHP.at>=350){job.dead=true;job.killedAt=Date.now();job.lastBoss={...job.lastBoss,x:tracked.x,y:tracked.y,radius:tracked.radius,hp:0,at:serverWorld.updatedAt,id:tracked.id};}return;}if(tracked?.hp>0)job.zeroHP=null;
     const candidates=[...serverWorld.entities.values()].filter(e=>(e.kind===1||e.kind===6)&&(verifiedMobTypes.get(e.type)?.type||mobIDs[e.type])===job.type&&e.rarity>=9&&Number.isFinite(e.hp)&&e.hp>0&&Number.isFinite(e.x)&&Number.isFinite(e.y));
     const boss=job.entityId!=null?candidates.find(e=>e.id===job.entityId):candidates.sort((a,b)=>b.radius-a.radius)[0];
-    if(!boss)return;if(job.entityId!==boss.id){job.samples=[];job.standTarget=null;job.hazard=null;}job.trackingSource=verifiedMobTypes.has(boss.type)?'Screen-confirmed name':'Catalog ID';job.entityId=boss.id;job.identityReset=false;job.lastBoss={x:boss.x,y:boss.y,hp:boss.hp,radius:boss.radius,vx:boss.vx||0,vy:boss.vy||0,angle:boss.angle,at:serverWorld.updatedAt,id:boss.id};
+    if(!boss)return;if(job.entityId!==boss.id){job.zeroHP=null;job.samples=[];job.standTarget=null;job.hazard=null;}job.trackingSource=verifiedMobTypes.has(boss.type)?'Screen-confirmed name':'Catalog ID';job.entityId=boss.id;job.identityReset=false;job.lastBoss={x:boss.x,y:boss.y,hp:boss.hp,radius:boss.radius,vx:boss.vx||0,vy:boss.vy||0,angle:boss.angle,at:serverWorld.updatedAt,id:boss.id};
     const observedAt=serverWorld.updatedAt||Date.now();
     if(job.samples.length&&boss.hp>job.samples.at(-1).hp+.02)job.samples=[];
     if(!job.samples.length||observedAt-job.samples.at(-1).at>700){job.samples.push({hp:boss.hp,at:observedAt});job.samples=job.samples.filter(s=>Date.now()-s.at<30000).slice(-40);}
@@ -1693,10 +1698,10 @@
     }catch(error){if(!unknownIndex||attempt===26)serverWorld.lastReject={reason:error.message,at:Date.now()};if(!unknownIndex)return null;}}return null;
   }
   function acceptServerFrame(bytes){
-    if(bytes[0]===3){const totals=decodePlayerTotals(bytes);if(totals){if(networkLifeTotals&&networkLifeTotals.id!==totals.id){serverWorld.own=null;serverWorld.entities.clear();}if(serverWorld.own)totals.xp=serverWorld.own.xp;networkLifeTotals=totals;networkLifeStatus.profilesDecoded++;networkLifeStatus.lastProfileAt=totals.receivedAt;}else networkLifeStatus.profilesRejected++;return;}
+    if(bytes[0]===3){const totals=decodePlayerTotals(bytes);if(totals){if(networkLifeTotals&&networkLifeTotals.id!==totals.id){serverWorld.own=null;serverWorld.entities.clear();}networkLifeTotals=totals;networkLifeStatus.profilesDecoded++;networkLifeStatus.lastProfileAt=totals.receivedAt;}else networkLifeStatus.profilesRejected++;return;}
     if((bytes[0]===4&&bytes.length>=34)||(bytes[0]===24&&bytes.length>=18)){
       const d=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),offset=bytes[0]===4?25:9,code=bytes[offset],names={0:'garden',3:'desert',4:'computer',5:'ocean',6:'jungle',8:'ant_hell',9:'sewers'};
-      if(d.getUint16(offset+1,true)>0&&d.getUint16(offset+3,true)>0&&d.getUint32(offset+5,true)===bytes.length-offset-9){serverWorld.entities.clear();if(apex.active){apex.active.entityId=null;apex.active.identityReset=true;apex.active.coverageSeen=null;apex.active.standTarget=null;apex.active.hazard=null;apex.active.reacquire=null;}verifiedMobTypes.clear();visualVotes.clear();visualPending.clear();visualRows=[];serverWorld.realm=names[code]||null;if(serverWorld.realm){liveRealm={id:serverWorld.realm,at:Date.now(),source:'server'};window.flowrixRealm=liveRealm;}realmShapeCache=null;}
+      if(d.getUint16(offset+1,true)>0&&d.getUint16(offset+3,true)>0&&d.getUint32(offset+5,true)===bytes.length-offset-9){serverWorld.entities.clear();if(apex.active){apex.active.entityId=null;apex.active.zeroHP=null;apex.active.identityReset=true;apex.active.coverageSeen=null;apex.active.standTarget=null;apex.active.hazard=null;apex.active.reacquire=null;}verifiedMobTypes.clear();visualVotes.clear();visualPending.clear();visualRows=[];serverWorld.realm=names[code]||null;if(serverWorld.realm){liveRealm={id:serverWorld.realm,at:Date.now(),source:'server'};window.flowrixRealm=liveRealm;}realmShapeCache=null;}
       return;
     }
     if(bytes[0]===5){
@@ -1742,11 +1747,18 @@
     for(const life of pastLives){const row=element('li','',`Life #${life.number} · ${lifeDuration(life.timeAliveMs)}\n${number(life.kills)} kills · ${number(life.xp)} XP`,pastLivesList);row.style.marginBottom='10px';}
     if(!pastLives.length)element('li','','No completed lives yet.',pastLivesList);
   }
+  function finishLife(kind,now){
+    if(!currentLife)return;
+    pastLives.unshift({number:currentLife.number,endedAt:now,endedBy:kind,timeAliveMs:now-currentLife.startedAt,xp:currentLife.xp,kills:currentLife.kills,source:currentLife.last?.source||null});
+    pastLives=pastLives.slice(0,3);currentLife=null;
+    try{localStorage.setItem(lifeStorageKey,JSON.stringify({past:pastLives,next:lifeNumber}));}catch{}
+  }
   function tickLifeStats(kind=screenInfo().kind,totals=readLifeTotals(),now=Date.now()){
+    if(currentLife?.last&&totals&&currentLife.last.id!==totals.id)finishLife('account changed',now);
     if(kind==='play'&&!currentLife&&pos&&now-pos.updatedAt<1500){currentLife={number:lifeNumber++,startedAt:now,last:null,xp:null,kills:null};updateLifeTotals(totals,now);}
     else updateLifeTotals(totals,now);
     if(kind==='death')queueDeathLoadoutSwap();
-    if((kind==='death'||kind==='menu')&&currentLife){pastLives.unshift({number:currentLife.number,endedAt:now,endedBy:kind==='death'?'death':'menu',timeAliveMs:now-currentLife.startedAt,xp:currentLife.xp,kills:currentLife.kills,source:currentLife.last?.source||null});pastLives=pastLives.slice(0,3);currentLife=null;try{localStorage.setItem(lifeStorageKey,JSON.stringify({past:pastLives,next:lifeNumber}));}catch{}}
+    if(kind==='death'||kind==='menu')finishLife(kind,now);
     renderLifeStats(now);
   }
   renderLifeStats(Date.now());
