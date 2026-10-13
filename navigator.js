@@ -1509,7 +1509,7 @@
       if(family&&!String(properties.mobs||'').split(/[^a-z_]+/).includes(family))continue;familyBands++;
       const difficulty=Number(properties.difficulty||0);let rank=0;
       for(let r=1;r<thresholds.length;r++)if(Math.abs(difficulty-thresholds[r])<Math.abs(difficulty-thresholds[rank]))rank=r;
-      if(/ultra/i.test(o.name))rank=6;else if(/mythic/i.test(o.name))rank=5;else if(/legendary/i.test(o.name))rank=4;else if(/^epic/i.test(o.name))rank=3;
+      if(/^ultra\b/i.test(o.name))rank=6;else if(/mythic/i.test(o.name))rank=5;else if(/legendary/i.test(o.name))rank=4;else if(/^epic/i.test(o.name))rank=3;
       availableRanks.add(rank);zc.fillStyle=`rgb(${rank+1},0,0)`;shapePath(zc,o);zc.fill();
     }
     const zones=zc.getImageData(0,0,size,size).data,ranks=new Uint8Array(size*size),terrain=new Uint8ClampedArray(size*size*4),colors=new Uint8ClampedArray(size*size*4);

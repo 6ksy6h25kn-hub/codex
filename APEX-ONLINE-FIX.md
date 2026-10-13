@@ -78,3 +78,7 @@ The earlier 156,374-frame native conversion trials emitted compact movement alon
 ## Ultra+ search priority
 
 Initial Apex searches now contain only reachable Ultra+ floor, regardless of the mob’s dedicated farming area. Expanded searches order all Ultra+ coverage before dedicated spawn areas, family spawn areas, and other biome floor. Fresh visible targets can still be tracked directly. Regression coverage checks initial exclusion of dedicated areas and Ultra+ precedence in expanded search.
+
+## Jungle zone correction
+
+The Jungle map names its difficulty-90 transition area `mythic-ultra zone`. Matching Ultra anywhere in a zone name incorrectly promoted the whole transition to rank 6. Full Ultra classification now requires an Ultra prefix; the mixed area remains rank 5 and the actual `ultra zone` remains rank 6. A browser regression checks those ranks and verifies Bush initial search points stay in the actual Ultra polygon.
