@@ -116,3 +116,7 @@ The screenshot check could fail even after the saved farming preset was loaded, 
 ## Ant Hell interior farming coverage
 
 Ant Hell family patrols now append a repeated serpentine interior sweep with 600-world-unit coverage buckets to the existing corner points, plus center coverage. Points use reachable selected-zone floor with an inset and are deduplicated. This covers the middle on every patrol cycle instead of visiting the center only once on arrival. Termite’s marked second point is retained. Browser coverage checks interior distances, zone membership and unique points.
+
+## Bounded loadout verification
+
+Saved-loadout comparisons that never confirm no longer trap entrance navigation. After three completed key-selection attempts, the script reports an unconfirmed build and continues without that comparison guard until a later build selection. Runtime repairs are capped at two per selected build; persistent inconsistencies disable that guard with a warning. This prevents automatic loadout checking itself from repeatedly reloading presets. It does not prove the unconfirmed build matches the screenshot. Diagnostics expose warnings and unconfirmed-selection/repair counters. Regression coverage checks bounded fallback and repair suspension.
