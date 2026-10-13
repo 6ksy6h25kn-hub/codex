@@ -46,6 +46,7 @@ The bitmap matcher has fixture coverage; it is a supplementary fallback, not a r
 
 ## Search and freshness safeguards
 
+- Requires a complete accepted world before an ambiguous startup header can publish coordinates or XP.
 - Separates fresh player coordinates from accepted mob-frame freshness. A rejected mob stream cannot make old Apex positions look current. Long navigation and route-mob encounters pause as well as the outer hunt loop.
 - Refreshes a substantially partial snapshot even if some fresh mobs are already known. A hunt that has searched for 15 seconds without any Apex sighting can also refresh once if unidentified records remain. This covers an Apex born before script installation.
 - Measures Antennae scale from repeated terrain chunks in both screen axes. The camera may lead the player; the measurement checks the terrain lattice rather than assuming a centered camera. A changed view interrupts a long search route so coverage spacing can be rebuilt.

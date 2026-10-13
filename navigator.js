@@ -1883,6 +1883,8 @@
       if(!frame&&own.protocol==='fixed-header'&&serverWorld.protocol!=='fixed-header'){
         const alternate=decodeOwnPlayer(bytes,true);if(alternate){const alternateFrame=decodeWorld(bytes,alternate);if(alternateFrame){own=alternate;frame=alternateFrame;}}
       }
+      // An ambiguous startup header cannot authorize coordinates until one complete world establishes the layout.
+      if(!frame&&!serverWorld.protocol){serverWorld.rejected++;serverWorld.lastFailure=serverWorld.lastReject;return;}
       // Publish one selected header only; a rejected candidate cannot overwrite XP or position.
       serverWorld.own=own;pos={x:own.x,y:own.y,updatedAt:own.at};window.flowrixPosition=pos;if(networkLifeTotals&&Number.isFinite(own.xp))networkLifeTotals={...networkLifeTotals,xp:own.xp};
       if(!frame){serverWorld.rejected++;serverWorld.lastFailure=serverWorld.lastReject;return;}serverWorld.frames++;serverWorld.protocol=own.protocol;serverWorld.entityProtocol=frame.entityProtocol;serverWorld.updatedAt=own.at;
