@@ -102,3 +102,7 @@ Ant Hell and Sewers farming now verifies the requested active order: Stick, Stic
 Automatic farming enables a watchdog that detects stale player data after 20 seconds, persistently rejected stale mob data, and two minutes without movement or phase progress. Fresh Apex HP loss also counts as progress, preventing legitimate stationary fights from triggering recovery. Normal focus pauses and loot/death waits are excluded. Farming exceptions and rendering errors use the same recovery path.
 
 Recovery releases inputs, invalidates the old run token, restores the saved farming map from an interrupted hunt, resets route/calibration caches and temporary obstacles, and restarts farming after an increasing 1–30 second delay. Manual Stop, Close, or changing the target cancels pending retries. Five attempts within ten minutes pause recovery with a status message; unavailable equipment, lost connectivity, login prompts, or browser failure may still require user action. The script cannot fix every external failure. Browser regressions cover stall/data detection, input release, cancellation, retry bounds, and cache reset followed by a farming restart.
+
+## Farming preset change
+
+Normal Ant Hell and Sewers now use L5 for farming, verification, recovery, and the return from Apex hunting. Save the requested farming layout as L5 in those two maps. Fire/Termite Ant Hell and other maps continue using L4. Regression coverage checks each map’s preset choice.

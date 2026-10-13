@@ -716,11 +716,12 @@
   }
   // Restore the saved farming preset once per arrival, including every respawn.
   // Loading L4 is idempotent; blind reserve toggles are not.
+  function farmPreset(map=spawnSelect.value){return map==='Normal Ant Hell'||map==='Sewers'?5:4;}
   const antSewerFarmPetals=['stick','stick','stick','stick','powder','antennae','shell','root','magnet','bulb'];
   function farmBuildSwapKeys(slots,ids){const keys=[];for(let i=0;i<antSewerFarmPetals.length;i++){const wanted=ids.indexOf(antSewerFarmPetals[i]);if(wanted<0)return null;if(slots?.[i]?.type===wanted)continue;if(slots?.[i+10]?.type!==wanted)return null;keys.push(String((i+1)%10));}return keys;}
   async function applyAntSewerFarmBuild(token){
     let ids;try{ids=Object.keys(JSON.parse(Module.FS.readFile('/data/petals.json',{encoding:'utf8'}))).sort();}catch{status.textContent='Cannot read petal registry to verify the Ant Hell/Sewers build.';return false;}
-    const keys=farmBuildSwapKeys(networkLifeTotals?.equipped,ids);if(!keys){status.textContent='Save the pictured Ant Hell/Sewers build as L4: 4 Stick, Powder, Antennae, Shell, Root, Magnet, Bulb.';return false;}
+    const keys=farmBuildSwapKeys(networkLifeTotals?.equipped,ids);if(!keys){status.textContent='Save the pictured Ant Hell/Sewers build as L'+farmPreset()+': 4 Stick, Powder, Antennae, Shell, Root, Magnet, Bulb.';return false;}
     if(keys.length&&!await swapTravelLoadout(token,keys))return false;
     const began=Date.now();for(let i=0;keys.length&&i<12&&running&&token===version;i++){if(networkLifeTotals?.receivedAt>began&&farmBuildSwapKeys(networkLifeTotals.equipped,ids)?.length===0)break;await wait(100);}
     if(farmBuildSwapKeys(networkLifeTotals?.equipped,ids)?.length!==0){status.textContent='Ant Hell/Sewers petal swaps could not be confirmed. Retrying the saved build.';return false;}
@@ -729,14 +730,14 @@
   async function verifyFarmLoadout(token){
     release();phase='checking farm petals';
     const began=Date.now();
-    if(!await selectLoadout(4,token))return false;
+    if(!await selectLoadout(farmPreset(),token))return false;
     for(let i=0;i<12&&running&&token===version&&scene()==='play';i++){
       if(networkLifeTotals?.receivedAt>began)break;
       await wait(100);
     }
     if(!running||token!==version||scene()!=='play')return false;
     if(spawnSelect.value.endsWith('Ant Hell')||spawnSelect.value==='Sewers')return applyAntSewerFarmBuild(token);
-    status.textContent='Saved L4 farm build restored.';
+    status.textContent='Saved L'+farmPreset()+' farm build restored.';
     return true;
   }
   async function prepareTravelLoadout(token){
@@ -1310,8 +1311,8 @@
       if(!job.historyStatus?.startsWith('Loot')||job.historyStatus==='Looting'){job.historyStatus=job.abandoned?'Unconfirmed defeat: returned to farm':'Interrupted';renderApexHistory();}
       if(token===version){release();alt('keyup');}if(apex.active===job)apex.active=null;
       if(running&&token===version){
-        if(scene()==='play')await selectLoadout(4,token);if(!running||token!==version)return;setFarmMap(saved.map,saved.rarity);
-        phase='returning to farm';if(await apexEnsureSpawn({map:saved.map},token,4)&&running&&token===version){apexResumeBuild=true;travelLoadoutActive=false;deathLoadoutSwapPending=false;}
+        if(scene()==='play')await selectLoadout(farmPreset(saved.map),token);if(!running||token!==version)return;setFarmMap(saved.map,saved.rarity);
+        phase='returning to farm';if(await apexEnsureSpawn({map:saved.map},token,farmPreset(saved.map))&&running&&token===version){apexResumeBuild=true;travelLoadoutActive=false;deathLoadoutSwapPending=false;}
       }else if(!running&&spawnSelect.value===job.map){
         spawnSelect.value=saved.map;gardenReady=false;gardenData=null;mapping=null;gridCache=null;rebuildRarities();raritySelect.value=saved.rarity;
       }
@@ -1371,7 +1372,7 @@
     return approach.concat(inside.slice(1));
   }
   async function bootSpawn(token,farming=true){
-    phase='checking spawn';if(apexFarmRestorePending&&scene()==='play'){if(!await selectLoadout(4,token))return false;apexFarmRestorePending=false;travelLoadoutActive=false;}const tutorial=freshText('Skip Tutorial');if(tutorial)await clickPoint(tutorial,token);await wait(450);if(scene()!=='play')throw new Error('SCREEN');if(!await autoCalibrate(token,true))return false;
+    phase='checking spawn';if(apexFarmRestorePending&&scene()==='play'){if(!await selectLoadout(farmPreset(),token))return false;apexFarmRestorePending=false;travelLoadoutActive=false;}const tutorial=freshText('Skip Tutorial');if(tutorial)await clickPoint(tutorial,token);await wait(450);if(scene()!=='play')throw new Error('SCREEN');if(!await autoCalibrate(token,true))return false;
     if(!farming){terrainPixels=new Uint8ClampedArray(readMap());phase='travel swap';return prepareTravelLoadout(token);}
     if(gardenReady){phase='travel swap';return prepareTravelLoadout(token);}
     phase='capturing maps';
