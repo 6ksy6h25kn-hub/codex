@@ -98,7 +98,7 @@ async function createApp({password = process.env.REPLIT_ACCESS_PASSWORD, gameURL
     } else throw new Error('Unknown control');
   }
   const server = http.createServer(async (req,res) => {
-    res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','no-referrer');
+    res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','same-origin');
     res.setHeader('Content-Security-Policy',"default-src 'self'; img-src 'self' blob:; style-src 'self'; script-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'none'");
     try {
       const url = new URL(req.url,'http://localhost'), file = publicFiles.get(url.pathname);

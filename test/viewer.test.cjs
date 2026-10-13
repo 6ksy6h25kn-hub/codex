@@ -23,7 +23,7 @@ test('Private viewer authenticates, injects the navigator and controls a browser
     await control({type:'settings',values:{biome:'Ocean',rarity:'Ultra+'}});
     const image=await get('/frame');assert.equal(image.headers.get('content-type'),'image/jpeg');assert((await image.arrayBuffer()).byteLength>1000);
     viewer=await chromium.launch({executablePath:'/usr/bin/chromium',args:['--no-sandbox']});const browserContext=await viewer.newContext();
-    await browserContext.addCookies([{name:'flowrix_session',value:cookie.slice(16),url:base}]);const view=await browserContext.newPage();await view.goto(base);await view.waitForFunction(()=>document.querySelector('#frame').naturalWidth===1280);
+    await browserContext.addCookies([{name:'flowrix_session',value:cookie.slice(16),url:base}]);const view=await browserContext.newPage();await browserContext.clearCookies();await view.goto(base);await view.locator('input[name=password]').fill(password);await Promise.all([view.waitForURL(base+'/'),view.getByRole('button',{name:'Open viewer'}).click()]);await view.waitForFunction(()=>document.querySelector('#frame').naturalWidth===1280);
     await view.locator('#screen').focus();await view.keyboard.press('x');
     await app.browserPage().waitForFunction(()=>received.includes('x'));
     await control({type:'pointer',action:'down',x:740,y:110});await control({type:'pointer',action:'up',x:740,y:110});await control({type:'text',text:'fixture-text'});
