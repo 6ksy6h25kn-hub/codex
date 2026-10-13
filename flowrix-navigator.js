@@ -1361,6 +1361,13 @@
     const average={x:points.reduce((s,p)=>s+p.x,0)/points.length,y:points.reduce((s,p)=>s+p.y,0)/points.length};
     const deep=cells.filter(i=>depth[i]>=Math.max(2,Math.floor(max*.75))),centerPool=deep.length?deep:pool;
     let center=centerPool[0],d=Infinity;for(const i of centerPool){const v=distance(g.point(i),average);if(v<d){d=v;center=i;}}
+    if(gardenData?.family?.endsWith('ant_hell')){
+      // Sweep the interior repeatedly instead of circling only four outer points.
+      const spacing=600,buckets=new Map();for(const i of cells){if(depth[i]<2)continue;const world=mapping.toWorld(g.point(i)),row=Math.floor(world.y/spacing),column=Math.floor(world.x/spacing),key=row+':'+column,error=Math.hypot(world.x-(column+.5)*spacing,world.y-(row+.5)*spacing),old=buckets.get(key);if(!old||error<old.error)buckets.set(key,{i,row,column,error});}
+      const sweep=[...buckets.values()].sort((a,b)=>a.row-b.row||(a.row%2?b.column-a.column:a.column-b.column));
+      const visited=new Set(corners.map(p=>g.nearest(mapping.toMap(p),'Patrol point',0)));for(const entry of sweep)if(!visited.has(entry.i)){visited.add(entry.i);corners.push(mapping.toWorld(g.point(entry.i)));}
+      const worldCenter=mapping.toWorld(g.point(center));if(!corners.some(p=>distance(p,worldCenter)<50))corners.push(worldCenter);
+    }
     return {center:mapping.toWorld(g.point(center)),corners};
   }
   function patrolPlan(startWorld,goalWorld,area){

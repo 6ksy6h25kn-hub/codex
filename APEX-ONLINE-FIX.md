@@ -112,3 +112,7 @@ Normal Ant Hell/Sewers L5 validation now checks both rows from the screenshot: a
 ## Entrance loadout retry correction
 
 The screenshot check could fail even after the saved farming preset was loaded, causing every entrance pass to issue L5 again. Selection now reuses a fresh confirmed matching preset without sending another key sequence. Unavailable registry data or a screenshot mismatch reports an advisory and continues using the saved preset rather than trapping farming at the entrance. Actual saved-preset mismatches still receive retries and runtime repair. Regression coverage verifies repeated selection does not send another load command and reserve repairs retain their intended swaps.
+
+## Ant Hell interior farming coverage
+
+Ant Hell family patrols now append a repeated serpentine interior sweep with 600-world-unit coverage buckets to the existing corner points, plus center coverage. Points use reachable selected-zone floor with an inset and are deduplicated. This covers the middle on every patrol cycle instead of visiting the center only once on arrival. Termite’s marked second point is retained. Browser coverage checks interior distances, zone membership and unique points.
