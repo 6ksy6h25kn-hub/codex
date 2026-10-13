@@ -676,14 +676,16 @@
   panel.insertBefore(apexControls,mapbox);
   const apex={queue:[],active:null,seen:new Map(),completed:0,ignored:0,lastError:null};
   function apexDiagnostics(){return {
-    world:{frames:serverWorld.frames,rejected:serverWorld.rejected,records:serverWorld.entities.size,lastReject:serverWorld.lastReject||null,apexRecords:[...serverWorld.entities.values()].filter(e=>(e.kind===1||e.kind===6)&&e.rarity>=9).map(e=>({id:e.id,type:e.type,catalog:mobIDs[e.type],screen:verifiedMobTypes.get(e.type)?.type,x:e.x,y:e.y,hp:e.hp}))},
+    world:{protocol:serverWorld.protocol||null,frames:serverWorld.frames,rejected:serverWorld.rejected,records:serverWorld.entities.size,lastReject:serverWorld.lastReject||null,apexRecords:[...serverWorld.entities.values()].filter(e=>(e.kind===1||e.kind===6)&&e.rarity>=9).map(e=>({id:e.id,type:e.type,catalog:mobIDs[e.type],screen:verifiedMobTypes.get(e.type)?.type,x:e.x,y:e.y,hp:e.hp}))},
+    catalog:{...mobCatalogStatus,trusted:mobCatalogTrusted},
     screen:{lastFrameAgeMs:Date.now()-visualAt,labels:visualRows.length,pairs:visualPairs,learned:[...verifiedMobTypes].map(([id,v])=>({id,type:v.type,catalog:mobIDs[id]}))},
     hunt:apex.active?{type:apex.active.type,entityId:apex.active.entityId,source:apex.active.trackingSource,searchPlan:apex.active.searchPlan,antennae:!!apex.active.searchPetal,viewScale:apex.active.viewScale,phase}:null
   };}
   button(apexControls,'Copy Apex diagnostics',async()=>{const text=JSON.stringify(apexDiagnostics(),null,2);try{await navigator.clipboard.writeText(text);apexStatus.textContent='Apex diagnostics copied.';}catch{let field=apexControls.querySelector('textarea');if(!field){field=element('textarea','','',apexControls);field.style.width='100%';field.rows=6;}field.value=text;field.focus();field.select();}});
   const apexGroups={garden:'Garden',desert:'Desert',computer:'Computer',sewers:'Sewers',ocean:'Ocean',jungle:'Jungle',ant_hell:'Normal Ant Hell',fire_ant_hell:'Fire Ant Hell',termite_ant_hell:'Termite Ant Hell'};
   let mobCatalog=null,mobIDs=[],mobCatalogRefresh=null,mobCatalogTrusted=false;
-  function loadMobCatalog(){if(mobCatalog)return true;try{try{mobCatalog=JSON.parse(Module.FS.readFile('/data/mobs.json',{encoding:'utf8'}));mobCatalogTrusted=true;}catch{mobCatalog=navigatorAsset('mobs.json');}mobIDs=Object.keys(mobCatalog).sort();return true;}catch{return false;}}
+  const mobCatalogStatus={source:'Bundled fallback',state:'waiting',count:0,path:null,reason:null};
+  function loadMobCatalog(){if(mobCatalog)return true;try{try{mobCatalog=JSON.parse(Module.FS.readFile('/data/mobs.json',{encoding:'utf8'}));mobCatalogTrusted=true;mobCatalogStatus.source='Native client registry';mobCatalogStatus.state='ready';}catch{mobCatalog=navigatorAsset('mobs.json');}mobIDs=Object.keys(mobCatalog).sort();mobCatalogStatus.count=mobIDs.length;return true;}catch{return false;}}
   function apexMobType(e){return mobCatalogTrusted?mobIDs[e.type]:(verifiedMobTypes.get(e.type)?.type||mobIDs[e.type]);}
   function extractPublicMobCatalog(bytes){
     const text=new TextDecoder().decode(bytes);let marker=-1;
@@ -695,15 +697,34 @@
     }return null;
   }
   async function refreshPublicMobCatalog(){
-    if(location.hostname!=='flowrix.sussybite.dev')return;
-    try{JSON.parse(Module.FS.readFile('/data/mobs.json',{encoding:'utf8'}));return;}catch{}
-    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),8000);
     try{
-      const response=await fetch(new URL('/bundle.wasm',location.href),{cache:'no-cache',signal:controller.signal});if(!response.ok)return;
-      const bytes=await response.arrayBuffer();if(bytes.byteLength>16000000)return;
-      const current=extractPublicMobCatalog(bytes);if(!current)return;
-      mobCatalog=current;mobIDs=Object.keys(current).sort();mobCatalogTrusted=true;verifiedMobTypes.clear();visualVotes.clear();
-    }catch{}finally{clearTimeout(timer);}
+      const current=JSON.parse(Module.FS.readFile('/data/mobs.json',{encoding:'utf8'}));
+      if(current.bee&&current.worker_ant){mobCatalog=current;mobIDs=Object.keys(current).sort();mobCatalogTrusted=true;Object.assign(mobCatalogStatus,{source:'Native client registry',state:'ready',count:mobIDs.length});return;}
+    }catch{}
+    const urls=[];
+    try{for(const entry of performance.getEntriesByType('resource').slice().reverse()){
+      const url=new URL(entry.name,location.href);
+      if(url.origin===location.origin&&/\.wasm(?:\.bin)?$/i.test(url.pathname)&&!urls.includes(url.href))urls.push(url.href);
+    }}catch{}
+    if(!urls.length&&!/(?:^|\.)flowrix\.(?:pro|sussybite\.dev)$/i.test(location.hostname))return;
+    // Read the tab's own loaded build, including the compressed bundle preferred by its loader.
+    for(const path of ['bundle.wasm.bin','bundle.wasm']){const url=new URL(path,location.href).href;if(!urls.includes(url))urls.push(url);}
+    mobCatalogStatus.state='checking';
+    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),12000);
+    try{
+      for(const url of urls.slice(0,6)){
+        if(controller.signal.aborted)break;
+        try{
+          const response=await fetch(url,{cache:'force-cache',signal:controller.signal});if(!response.ok)continue;
+          let buffer=await response.arrayBuffer();if(buffer.byteLength>16000000)continue;
+          if(new URL(url).pathname.endsWith('.bin')){if(typeof DecompressionStream!=='function')continue;buffer=await new Response(new Blob([buffer]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer();}
+          if(buffer.byteLength>16000000)continue;const current=extractPublicMobCatalog(new Uint8Array(buffer));if(!current)continue;
+          mobCatalog=current;mobIDs=Object.keys(current).sort();mobCatalogTrusted=true;verifiedMobTypes.clear();visualVotes.clear();apexSightings.clear();
+          Object.assign(mobCatalogStatus,{source:'Loaded public client registry',state:'ready',count:mobIDs.length,path:new URL(url).pathname,reason:null});return;
+        }catch(error){mobCatalogStatus.reason=error.name==='AbortError'?'Client registry lookup timed out':error.message;}
+      }
+      mobCatalogStatus.state='fallback';if(!mobCatalogStatus.reason)mobCatalogStatus.reason='Current registry not found in the loaded client assets';
+    }finally{clearTimeout(timer);}
   }
   function apexMap(type,text){
     const m=mobCatalog?.[type],groups=Array.isArray(m?.groups)?m.groups:Object.keys(m?.groups||{}),maps=[...new Set(groups.map(g=>apexGroups[g]).filter(Boolean))];
@@ -843,7 +864,7 @@
   function apexRecentlyScanned(job,target){return Date.now()-(job.coverageSeen?.get(Math.floor(target.x/600)+':'+Math.floor(target.y/600))||0)<30000;}
   function apexNeedsWorldRefresh(){
     const records=[...serverWorld.entities.values()],complete=e=>(e.kind===1||e.kind===6)&&Number.isFinite(e.type)&&Number.isFinite(e.rarity);
-    const missing=records.filter(e=>e.kind<0||(e.kind===1||e.kind===6)&&!Number.isFinite(e.type)).length;return missing>=5&&(!records.some(complete)||serverWorld.rejected>20&&serverWorld.rejected/(serverWorld.frames+serverWorld.rejected)>.1);
+    const missing=records.filter(e=>e.kind<0||(e.kind===1||e.kind===6)&&!Number.isFinite(e.type)).length;return (missing>=5||!records.length&&serverWorld.rejected>20&&serverWorld.lastReject?.stage==='world entities')&&(!records.some(complete)||serverWorld.rejected>20&&serverWorld.rejected/(serverWorld.frames+serverWorld.rejected)>.1);
   }
   function shouldRejoinApex(job,etaSeconds){const rate=apexDecay(job);if(!job.lastBoss)return true;if(rate===null)return job.lastBoss.hp>.20;const stale=Math.max(0,(Date.now()-job.lastBoss.at)/1000);job.returnETA=etaSeconds;return job.lastBoss.hp-rate*(etaSeconds+stale)>.20;}
   async function selectLoadout(number,token){
@@ -1677,21 +1698,41 @@
   // Read-only native server observations. A rejected frame never mutates entities.
   const serverWorld={entities:new Map(),own:null,realm:null,updatedAt:0,frames:0,rejected:0};
   function decodeOwnPlayer(bytes){
-    if(bytes[0]!==5||bytes.length<72)return null;
-    const d=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),own={x:d.getFloat32(17,true),y:d.getFloat32(21,true),vx:d.getFloat32(25,true),vy:d.getFloat32(29,true),hp:d.getFloat32(33,true),maxHP:d.getFloat32(37,true),xp:d.getFloat64(49,true),level:d.getUint16(57,true),at:Date.now()};
-    if(![own.x,own.y,own.vx,own.vy,own.hp,own.maxHP,own.xp].every(Number.isFinite)||Math.abs(own.x)>1e7||Math.abs(own.y)>1e7||own.hp<0||own.maxHP<=0||own.hp>own.maxHP*1.01||own.xp<0||own.xp>Number.MAX_SAFE_INTEGER||own.level<1||own.level>10000||bytes[67]>40||72+bytes[67]*6>bytes.length)return null;
-    const o=68+bytes[67]*6;if(d.getUint16(o,true)>20000||d.getUint16(o+2,true)>20000)return null;return own;
+    if(bytes[0]!==5)return null;
+    const view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),now=Date.now();
+    const fail=reason=>{serverWorld.lastReject={reason,stage:'player header',bytes:bytes.length,at:now};return null;};
+    const countsValid=o=>o+4<=bytes.length&&view.getUint16(o,true)<=20000&&view.getUint16(o+2,true)<=20000;
+    // Older offline clients send the complete player state at fixed offsets.
+    if(bytes.length>=72&&serverWorld.protocol!=='delta-header'){
+      const own={x:view.getFloat32(17,true),y:view.getFloat32(21,true),vx:view.getFloat32(25,true),vy:view.getFloat32(29,true),hp:view.getFloat32(33,true),maxHP:view.getFloat32(37,true),xp:view.getFloat64(49,true),level:view.getUint16(57,true),at:now,protocol:'fixed-header',entityOffset:68+bytes[67]*6};
+      if([own.x,own.y,own.vx,own.vy,own.hp,own.maxHP,own.xp].every(Number.isFinite)&&Math.abs(own.x)<=1e7&&Math.abs(own.y)<=1e7&&own.hp>=0&&own.maxHP>0&&own.hp<=own.maxHP*1.01&&own.xp>=0&&own.xp<=Number.MAX_SAFE_INTEGER&&own.level>=1&&own.level<=10000&&bytes[67]<=40&&countsValid(own.entityOffset))return own;
+    }
+    // The current public client uses x/y followed by optional state groups.
+    // Group 1: HP/max HP, group 2: shield/max shield, group 4: XP/level/stars.
+    try{
+      if(bytes.length<30)throw Error('Truncated delta player header');
+      let offset=22;const mask=bytes[21];if(mask&~7)throw Error('Unknown delta player flags: '+mask);
+      const own={x:view.getFloat32(13,true),y:view.getFloat32(17,true),vx:0,vy:0,at:now,entityId:view.getUint32(1,true),protocol:'delta-header'};
+      if(!Number.isFinite(own.x)||!Number.isFinite(own.y)||Math.abs(own.x)>1e7||Math.abs(own.y)>1e7)throw Error('Invalid delta player coordinates');
+      const previous=serverWorld.own?.protocol==='delta-header'?serverWorld.own:null;
+      if(previous){for(const key of ['hp','maxHP','shield','maxShield','xp','level','stars'])own[key]=previous[key];const dt=(now-previous.at)/1000;if(dt>=.01&&dt<1){const vx=(own.x-previous.x)/dt,vy=(own.y-previous.y)/dt;if(Math.hypot(vx,vy)<20000){own.vx=vx;own.vy=vy;}}}
+      if(!(mask&4)&&Number.isFinite(networkLifeTotals?.xp))own.xp=networkLifeTotals.xp;
+      const need=n=>{if(offset+n>bytes.length)throw Error('Truncated delta player group');};
+      if(mask&1){need(8);own.hp=view.getFloat32(offset,true);own.maxHP=view.getFloat32(offset+4,true);offset+=8;if(!Number.isFinite(own.hp)||!Number.isFinite(own.maxHP)||own.hp<0||own.maxHP<=0||own.hp>own.maxHP*1.01)throw Error('Invalid delta player HP');}
+      if(mask&2){need(8);own.shield=view.getFloat32(offset,true);own.maxShield=view.getFloat32(offset+4,true);offset+=8;if(!Number.isFinite(own.shield)||!Number.isFinite(own.maxShield)||own.shield<0||own.maxShield<0)throw Error('Invalid delta player shield');}
+      if(mask&4){need(18);own.xp=view.getFloat64(offset,true);own.level=view.getUint16(offset+8,true);own.stars=view.getFloat64(offset+10,true);offset+=18;if(!Number.isFinite(own.xp)||own.xp<0||own.xp>Number.MAX_SAFE_INTEGER||own.level<1||own.level>10000||!Number.isFinite(own.stars)||own.stars<0)throw Error('Invalid delta player XP');}
+      need(1);const petals=bytes[offset++];if(petals>40)throw Error('Unsupported delta petal count');need(petals*6+4);offset+=petals*6;own.entityOffset=offset;
+      if(!countsValid(offset))throw Error('Invalid delta entity counts');return own;
+    }catch(error){return fail(error.message);}
   }
-  function decodeWorld(bytes){
-    if(bytes[0]!==5||bytes.length<72)return null;
+  function decodeWorld(bytes,header=null){
+    const own=header||decodeOwnPlayer(bytes);if(!own)return null;
     for(let attempt=0;attempt<27;attempt++){let unknownIndex=0;try{
-      const d=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);let o=68;
+      const d=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);let o=own.entityOffset;
       const need=n=>{if(o+n>bytes.length)throw Error('Truncated world');};
       const u8=()=>{need(1);return d.getUint8(o++);},u16=()=>{need(2);const v=d.getUint16(o,true);o+=2;return v;},u32=()=>{need(4);const v=d.getUint32(o,true);o+=4;return v;},f32=()=>{need(4);const v=d.getFloat32(o,true);o+=4;if(!Number.isFinite(v))throw Error('Invalid world number');return v;};
       const skip=n=>{need(n);o+=n;},str=()=>{const n=u16();if(n>1024)throw Error('Invalid entity string');need(n);const v=new TextDecoder().decode(bytes.subarray(o,o+n));o+=n;return v;};
-      const own={x:d.getFloat32(17,true),y:d.getFloat32(21,true),vx:d.getFloat32(25,true),vy:d.getFloat32(29,true),hp:d.getFloat32(33,true),maxHP:d.getFloat32(37,true),xp:d.getFloat64(49,true),level:d.getUint16(57,true),at:Date.now()};
-      if(![own.x,own.y,own.vx,own.vy,own.hp,own.maxHP,own.xp].every(Number.isFinite)||Math.abs(own.x)>1e7||Math.abs(own.y)>1e7||own.hp<0||own.maxHP<=0||own.xp<0||own.xp>Number.MAX_SAFE_INTEGER||own.level<1||own.level>10000||bytes[67]>40)return null;
-      skip(bytes[67]*6);const nc=u16(),dc=u16();if(nc>20000||dc>20000)return null;
+      const nc=u16(),dc=u16();if(nc>20000||dc>20000)throw Error('Invalid world entity counts');
       const changes=new Map(),removed=[];
       for(let i=0;i<nc;i++){
         const id=u32(),kind=u8(),type=u16(),rarity=u8(),flags=u8(),x=f32(),y=f32(),angle=u16(),radius=f32(),hpLowBits=u16(),hpHighBits=flags&8?u16():null;
@@ -1721,18 +1762,18 @@
       }
       const count=u16();for(let i=0;i<count;i++)removed.push(u32());const effects=u16();skip(effects*26);if(o!==bytes.length)throw Error('Unsupported world trailer');
       return {own,changes,removed};
-    }catch(error){if(!unknownIndex||attempt===26)serverWorld.lastReject={reason:error.message,at:Date.now()};if(!unknownIndex)return null;}}return null;
+    }catch(error){if(!unknownIndex||attempt===26)serverWorld.lastReject={reason:error.message,stage:'world entities',protocol:own.protocol,bytes:bytes.length,at:Date.now()};if(!unknownIndex)return null;}}return null;
   }
   function acceptServerFrame(bytes){
-    if(bytes[0]===3){const totals=decodePlayerTotals(bytes);if(totals){if(networkLifeTotals&&networkLifeTotals.id!==totals.id){serverWorld.own=null;serverWorld.entities.clear();}networkLifeTotals=totals;networkLifeStatus.profilesDecoded++;networkLifeStatus.lastProfileAt=totals.receivedAt;}else networkLifeStatus.profilesRejected++;return;}
+    if(bytes[0]===3){const totals=decodePlayerTotals(bytes);if(totals){if(networkLifeTotals&&networkLifeTotals.id!==totals.id){serverWorld.own=null;serverWorld.protocol=null;serverWorld.entities.clear();}networkLifeTotals=totals;networkLifeStatus.profilesDecoded++;networkLifeStatus.lastProfileAt=totals.receivedAt;}else networkLifeStatus.profilesRejected++;return;}
     if((bytes[0]===4&&bytes.length>=34)||(bytes[0]===24&&bytes.length>=18)){
       const d=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),offset=bytes[0]===4?25:9,code=bytes[offset],names={0:'garden',3:'desert',4:'computer',5:'ocean',6:'jungle',8:'ant_hell',9:'sewers'};
       if(d.getUint16(offset+1,true)>0&&d.getUint16(offset+3,true)>0&&d.getUint32(offset+5,true)===bytes.length-offset-9){serverWorld.entities.clear();if(apex.active){apex.active.entityId=null;apex.active.zeroHP=null;apex.active.identityReset=true;apex.active.coverageSeen=null;apex.active.standTarget=null;apex.active.hazard=null;apex.active.reacquire=null;}verifiedMobTypes.clear();visualVotes.clear();visualPending.clear();visualRows=[];serverWorld.realm=names[code]||null;if(serverWorld.realm){liveRealm={id:serverWorld.realm,at:Date.now(),source:'server'};window.flowrixRealm=liveRealm;}realmShapeCache=null;}
       return;
     }
     if(bytes[0]===5){
-      const own=decodeOwnPlayer(bytes);if(!own){serverWorld.rejected++;return;}serverWorld.own=own;serverWorld.updatedAt=own.at;pos={x:own.x,y:own.y,updatedAt:own.at};window.flowrixPosition=pos;if(networkLifeTotals)networkLifeTotals={...networkLifeTotals,xp:own.xp};
-      const frame=decodeWorld(bytes);if(!frame){serverWorld.rejected++;return;}serverWorld.frames++;
+      const own=decodeOwnPlayer(bytes);if(!own){serverWorld.rejected++;return;}serverWorld.own=own;serverWorld.updatedAt=own.at;pos={x:own.x,y:own.y,updatedAt:own.at};window.flowrixPosition=pos;if(networkLifeTotals&&Number.isFinite(own.xp))networkLifeTotals={...networkLifeTotals,xp:own.xp};
+      const frame=decodeWorld(bytes,own);if(!frame){serverWorld.rejected++;return;}serverWorld.frames++;serverWorld.protocol=own.protocol;
       for(const [id,e] of frame.changes)serverWorld.entities.set(id,e);for(const id of frame.removed)serverWorld.entities.delete(id);
       observeApexEntities();apexRecordCoverage(apex.active);return;
     }
