@@ -108,3 +108,7 @@ Recovery releases inputs, invalidates the old run token, restores the saved farm
 Normal Ant Hell and Sewers now use L5 for farming, verification, recovery, and the return from Apex hunting. Save the requested farming layout as L5 in those two maps. Fire/Termite Ant Hell and other maps continue using L4. Regression coverage checks each map’s preset choice.
 
 Normal Ant Hell/Sewers L5 validation now checks both rows from the screenshot: active Stick, Stick, Stick, Stick, Powder, Antennae, Shell, Root, Magnet, Bulb; reserve Shell, Powder, Powder, Powder, Stick, Stick, Magnet, empty, empty, Shell. Paired swaps must produce both rows correctly. Missing or incorrectly placed reserve petals prompt saving the full pictured L5 layout. Existing rarities are preserved. Regression coverage checks a full match, incorrect reserve rejection, and paired restoration.
+
+## Entrance loadout retry correction
+
+The screenshot check could fail even after the saved farming preset was loaded, causing every entrance pass to issue L5 again. Selection now reuses a fresh confirmed matching preset without sending another key sequence. Unavailable registry data or a screenshot mismatch reports an advisory and continues using the saved preset rather than trapping farming at the entrance. Actual saved-preset mismatches still receive retries and runtime repair. Regression coverage verifies repeated selection does not send another load command and reserve repairs retain their intended swaps.

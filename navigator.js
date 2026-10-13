@@ -721,11 +721,11 @@
   const antSewerReservePetals=['shell','powder','powder','powder','stick','stick','magnet',null,null,'shell'];
   function farmBuildSwapKeys(slots,ids,full=false){const keys=[];for(let i=0;i<antSewerFarmPetals.length;i++){const wanted=ids.indexOf(antSewerFarmPetals[i]),reserve=antSewerReservePetals[i]===null?65535:ids.indexOf(antSewerReservePetals[i]);if(wanted<0||full&&reserve<0)return null;const active=slots?.[i]?.type,stored=slots?.[i+10]?.type;if(active===wanted&&(!full||stored===reserve))continue;if(stored!==wanted||full&&active!==reserve)return null;keys.push(String((i+1)%10));}return keys;}
   async function applyAntSewerFarmBuild(token){
-    let ids;try{ids=Object.keys(JSON.parse(Module.FS.readFile('/data/petals.json',{encoding:'utf8'}))).sort();}catch{status.textContent='Cannot read petal registry to verify the Ant Hell/Sewers build.';return false;}
-    const full=farmPreset()===5,keys=farmBuildSwapKeys(networkLifeTotals?.equipped,ids,full);if(!keys){status.textContent='Save the pictured Ant Hell/Sewers build as L'+farmPreset()+': active 4 Stick, Powder, Antennae, Shell, Root, Magnet, Bulb; reserve Shell, 3 Powder, 2 Stick, Magnet, empty, empty, Shell.';return false;}
+    let ids;try{ids=Object.keys(JSON.parse(Module.FS.readFile('/data/petals.json',{encoding:'utf8'}))).sort();}catch{status.textContent='Saved farming preset loaded; screenshot slot check unavailable.';return true;}
+    const full=farmPreset()===5,keys=farmBuildSwapKeys(networkLifeTotals?.equipped,ids,full);if(!keys){status.textContent='Save the pictured Ant Hell/Sewers build as L'+farmPreset()+': active 4 Stick, Powder, Antennae, Shell, Root, Magnet, Bulb; reserve Shell, 3 Powder, 2 Stick, Magnet, empty, empty, Shell. Continuing with the saved preset.';return true;}
     if(keys.length&&!await swapTravelLoadout(token,keys))return false;
     const began=Date.now();for(let i=0;keys.length&&i<12&&running&&token===version;i++){if(networkLifeTotals?.receivedAt>began&&farmBuildSwapKeys(networkLifeTotals.equipped,ids,full)?.length===0)break;await wait(100);}
-    if(farmBuildSwapKeys(networkLifeTotals?.equipped,ids,full)?.length!==0){status.textContent='Ant Hell/Sewers petal swaps could not be confirmed. Retrying the saved build.';return false;}
+    if(farmBuildSwapKeys(networkLifeTotals?.equipped,ids,full)?.length!==0){status.textContent='Extra petal swaps could not be confirmed. Restoring the saved farming preset.';return selectLoadout(farmPreset(),token);}
     status.textContent='Ant Hell/Sewers farming build verified.';return true;
   }
   async function verifyFarmLoadout(token){
@@ -997,6 +997,7 @@
   }
   function shouldRejoinApex(job,etaSeconds){const rate=apexDecay(job);if(!job.lastBoss)return true;if(rate===null)return job.lastBoss.hp>.20;const stale=Math.max(0,(Date.now()-job.lastBoss.at)/1000);job.returnETA=etaSeconds;return job.lastBoss.hp-rate*(etaSeconds+stale)>.20;}
   async function selectLoadout(number,token){
+    if(running&&token===version&&scene()==='play'&&expectedLoadout?.number===number&&networkLifeTotals?.id===expectedLoadout.account&&Date.now()-networkLifeTotals.receivedAt<3000&&loadoutMatches(networkLifeTotals.equipped,networkLifeTotals.savedLoadouts?.[number]||[])){expectedLoadout={number,account:networkLifeTotals.id,slots:networkLifeTotals.equipped.map(p=>({...p})),swaps:[]};lastLoadoutCheck=Date.now();return true;}
     for(let attempt=0;attempt<3;attempt++){
       const began=Date.now(),account=networkLifeTotals?.id,preset=networkLifeTotals?.savedLoadouts?.[number];
       if(!await sendLoadout(number,token))return false;
