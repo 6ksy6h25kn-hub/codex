@@ -1363,14 +1363,13 @@
     const average={x:points.reduce((s,p)=>s+p.x,0)/points.length,y:points.reduce((s,p)=>s+p.y,0)/points.length};
     const deep=cells.filter(i=>depth[i]>=Math.max(2,Math.floor(max*.75))),centerPool=deep.length?deep:pool;
     let center=centerPool[0],d=Infinity;for(const i of centerPool){const v=distance(g.point(i),average);if(v<d){d=v;center=i;}}
-    if(gardenData?.family?.endsWith('ant_hell')){
-      // Keep the four marked outer points, add the center, then spread four interior points.
-      const used=new Set(corners.map(p=>g.nearest(mapping.toMap(p),'Patrol point',0)));
-      if(!used.has(center)){used.add(center);corners.push(mapping.toWorld(g.point(center)));}
-      const interiorCells=cells.filter(i=>depth[i]>=2);
-      while(corners.length<9){let best=-1,score=-1;for(const i of interiorCells){if(used.has(i))continue;const world=mapping.toWorld(g.point(i)),separation=Math.min(...corners.map(p=>distance(world,p)));if(separation>score){score=separation;best=i;}}if(best<0)break;used.add(best);corners.push(mapping.toWorld(g.point(best)));}
-    }
     return {center:mapping.toWorld(g.point(center)),corners};
+  }
+  function farmPatrolPlan(startWorld,goalWorld,area,points,crossMiddle=false){
+    if(crossMiddle&&gardenData?.family?.endsWith('ant_hell')){
+      const first=patrolPlan(startWorld,points.center,area),second=patrolPlan(points.center,goalWorld,area);return first.concat(second.slice(1));
+    }
+    return patrolPlan(startWorld,goalWorld,area);
   }
   function patrolPlan(startWorld,goalWorld,area){
     const map=mapping.toMap(startWorld),g=grid(area.mask),x=Math.round(map.x),y=Math.round(map.y);
@@ -1428,7 +1427,7 @@
         if(!area){area=chooseArea(p);points=zonePoints(area);patrolPreview=points;stage='entry';corner=0;swappedBack=false;}
         goal=stage==='entry'?area.goal:stage==='center'?points.center:points.corners[corner];phase=stage==='entry'?'traveling to zone':stage==='center'?'moving to zone center':`patrol point ${corner+1}/${points.corners.length}`;
         let path;
-        try{path=stage==='entry'?plan(p,goal):patrolPlan(p,goal,area);}catch{
+        try{path=stage==='entry'?plan(p,goal):farmPatrolPlan(p,goal,area,points,stage==='patrol');}catch{
           try{if(stage!=='entry')throw new Error('Patrol route temporarily blocked.');path=plan(p,goal);}catch(error){
             phase='recovering position';
             const saved={entry:mapping.toMap(area.goal),center:mapping.toMap(points.center),corners:points.corners.map(mapping.toMap)};
