@@ -26,13 +26,59 @@
   const visualAtlas=new WeakMap(),visualPending=new Map(),verifiedMobTypes=new Map(),visualVotes=new Map();
   const visualRarities=['Common','Uncommon','Rare','Epic','Legendary','Mythic','Ultra','Super','Unique','Apex'];
   let visualRows=[],visualAt=0,visualRAF=0,visualEnabled=true,visualPairs=0,visualFrameNumber=0;
+  const atlasProbeState={queued:0,checked:0,recovered:0,lastAt:0,errors:0};
+  const terrainViewPending=[];
+  const atlasProbeQueue=[],atlasProbePending=new WeakMap(),atlasProbeResults=new WeakMap(),atlasTemplates=new Map();
+  const atlasProbeCanvas=document.createElement('canvas'),atlasProbeCtx=atlasProbeCanvas.getContext('2d',{willReadFrequently:true});
   function visualTextType(text){
     const label=String(text).trim();if(visualRarities.includes(label))return {label,rarity:visualRarities.indexOf(label)};
     if(!loadMobCatalog())return null;for(const [type,m] of Object.entries(mobCatalog))if(m.name===label)return {label,type};return null;
   }
+  function atlasSignature(image,sx,sy,sw,sh){
+    if(sw<8||sh<6||sw>600||sh>128)return null;
+    atlasProbeCanvas.width=Math.ceil(sw);atlasProbeCanvas.height=Math.ceil(sh);
+    atlasProbeCtx.drawImage(image,sx,sy,sw,sh,0,0,sw,sh);
+    const width=atlasProbeCanvas.width,height=atlasProbeCanvas.height,pixels=atlasProbeCtx.getImageData(0,0,width,height).data;
+    let left=width,right=-1,top=height,bottom=-1,ink=0;const mask=new Uint8Array(width*height);
+    for(let y=0;y<height;y++)for(let x=0;x<width;x++){const i=(y*width+x)*4;if(pixels[i+3]>=80&&Math.max(pixels[i],pixels[i+1],pixels[i+2])>=128){mask[y*width+x]=1;ink++;left=Math.min(left,x);right=Math.max(right,x);top=Math.min(top,y);bottom=Math.max(bottom,y);}}
+    if(ink<15||right<left||bottom-top<4||ink>sw*sh*.75)return null;
+    const w=right-left+1,h=bottom-top+1,bits=new Uint8Array(64*32);
+    for(let y=0;y<32;y++)for(let x=0;x<64;x++){const px=left+Math.min(w-1,Math.floor((x+.5)*w/64)),py=top+Math.min(h-1,Math.floor((y+.5)*h/32));bits[y*64+x]=mask[py*width+px];}
+    return {bits,aspect:w/h,left,right,top,bottom,width:w,height:h};
+  }
+  function atlasTemplate(label,font){
+    const key=label+'|'+font;if(atlasTemplates.has(key))return atlasTemplates.get(key);
+    const canvas=document.createElement('canvas'),ctx=canvas.getContext('2d');ctx.font=font;canvas.width=Math.ceil(ctx.measureText(label).width)+16;canvas.height=96;ctx.font=font;ctx.fillStyle='#ffffff';ctx.fillText(label,8,72);
+    const sig=atlasSignature(canvas,0,0,canvas.width,canvas.height);atlasTemplates.set(key,sig);while(atlasTemplates.size>160)atlasTemplates.delete(atlasTemplates.keys().next().value);return sig;
+  }
+  function queueAtlasProbe(image,sx,sy,sw,sh){
+    if(!visualEnabled||!apex.active||mobCatalogTrusted&&apexTargetVisible(apex.active)||image.width<512||image.height<256||sw<18||sw>600||sh<7||sh>96||atlasProbeQueue.length>=24)return;
+    const key=[sx,sy,sw,sh].map(Math.round).join(':');let results=atlasProbeResults.get(image);if(!results)atlasProbeResults.set(image,results=new Map());
+    const prior=results.get(key);if(prior&&Date.now()-prior.at<60000)return;
+    let pending=atlasProbePending.get(image);if(!pending)atlasProbePending.set(image,pending=new Set());if(pending.has(key))return;pending.add(key);atlasProbeQueue.push({image,sx,sy,sw,sh,key});atlasProbeState.queued=atlasProbeQueue.length;
+  }
+  function recoverCachedAtlasText(){
+    if(!visualEnabled||!apex.active||Date.now()-atlasProbeState.lastAt<125)return;atlasProbeState.lastAt=Date.now();
+    const item=atlasProbeQueue.shift();atlasProbeState.queued=atlasProbeQueue.length;if(!item)return;
+    atlasProbePending.get(item.image)?.delete(item.key);atlasProbeState.checked++;
+    try{
+      const sig=atlasSignature(item.image,item.sx,item.sy,item.sw,item.sh),labels=['Apex',mobCatalog?.[apex.active.type]?.name].filter(Boolean);let best=null,second=0;
+      const fonts=[...new Set([...(window.Module?.cppCanvasStrings||[]).filter(v=>typeof v==='string'&&/\b(?:bold\s+)?[\d.]+px\s+/i.test(v)&&parseFloat(v.match(/([\d.]+)px/)?.[1])<=64),...[12,14,16,18,20,22,24,28,32,36,40,48].flatMap(n=>['bold '+n+'px Ubuntu, sans-serif','bold '+n+'px sans-serif'])])].slice(0,48);
+      if(sig)for(const label of labels)for(const font of fonts){
+        const template=atlasTemplate(label,font);if(!template||Math.abs(Math.log(sig.aspect/template.aspect))>.12)continue;
+        let same=0,total=0;for(let i=0;i<sig.bits.length;i++){if(sig.bits[i]||template.bits[i])total++;if(sig.bits[i]&&template.bits[i])same++;}const score=total?same/total:0;
+        if(!best||score>best.score){if(best&&best.label!==label)second=best.score;best={label,score,font};}else if(best.label!==label)second=Math.max(second,score);
+      }
+      let results=atlasProbeResults.get(item.image);if(!results)atlasProbeResults.set(item.image,results=new Map());results.set(item.key,{at:Date.now(),label:best?.score>=.92&&best.score-second>.08?best.label:null});while(results.size>512)results.delete(results.keys().next().value);
+      if(!sig||!best||best.score<.92||best.score-second<=.08)return;
+      const role=visualTextType(best.label);if(!role)return;const row={...role,left:item.sx+sig.left,right:item.sx+sig.right+1,top:item.sy+sig.top,bottom:item.sy+sig.bottom+1,fontSize:parseFloat(best.font.match(/([\d.]+)px/)?.[1])||sig.height/.72,textScale:1,recovered:true,score:best.score};
+      let cache=visualAtlas.get(item.image);if(!cache)visualAtlas.set(item.image,cache={entries:new Map(),cells:new Map()});
+      const key='recovered:'+item.key,cell=Math.floor((row.left+row.right)/256)+':'+Math.floor((row.top+row.bottom)/256);cache.entries.set(key,row);let bucket=cache.cells.get(cell);if(!bucket)cache.cells.set(cell,bucket=new Map());bucket.set(key,row);atlasProbeState.recovered++;
+    }catch{atlasProbeState.errors++;}
+  }
   function atlasText(ctx,text,x,y){
     const role=visualTextType(text);if(!role||!Number.isFinite(x)||!Number.isFinite(y))return;
-    const fontSize=parseFloat(ctx.font.match(/([\d.]+)px/)?.[1]||'0');if(fontSize<=0||fontSize>Math.max(20,game.height*.026))return;
+    const fontSize=parseFloat(ctx.font.match(/([\d.]+)px/)?.[1]||'0');if(fontSize<=0||fontSize>128)return;
     const m=ctx.measureText(text),t=ctx.getTransform(),left=x-(m.actualBoundingBoxLeft||0),right=x+(m.actualBoundingBoxRight||m.width),top=y-(m.actualBoundingBoxAscent||fontSize),bottom=y+(m.actualBoundingBoxDescent||0);
     const pts=[[left,top],[right,top],[left,bottom],[right,bottom]].map(([x,y])=>({x:t.a*x+t.c*y+t.e,y:t.b*x+t.d*y+t.f}));
     const box={left:Math.min(...pts.map(p=>p.x)),right:Math.max(...pts.map(p=>p.x)),top:Math.min(...pts.map(p=>p.y)),bottom:Math.max(...pts.map(p=>p.y))};
@@ -43,11 +89,13 @@
     cache.entries.set(key,row);let bucket=cache.cells.get(cell);if(!bucket)cache.cells.set(cell,bucket=new Map());bucket.set(key,row);
   }
   function forgetAtlas(ctx,x,y,w,h){
-    const cache=visualAtlas.get(ctx.canvas);if(!cache)return;
-    if(x===undefined){visualAtlas.delete(ctx.canvas);return;}
+    const cache=visualAtlas.get(ctx.canvas),results=atlasProbeResults.get(ctx.canvas);if(!cache&&!results)return;
+    if(x===undefined){visualAtlas.delete(ctx.canvas);atlasProbeResults.delete(ctx.canvas);return;}
     const t=ctx.getTransform(),corners=[[x,y],[x+w,y],[x,y+h],[x+w,y+h]].map(([x,y])=>({x:t.a*x+t.c*y+t.e,y:t.b*x+t.d*y+t.f}));
     x=Math.min(...corners.map(p=>p.x));y=Math.min(...corners.map(p=>p.y));w=Math.max(...corners.map(p=>p.x))-x;h=Math.max(...corners.map(p=>p.y))-y;
-    if(x<=0&&y<=0&&x+w>=ctx.canvas.width&&y+h>=ctx.canvas.height){visualAtlas.delete(ctx.canvas);return;}
+    if(x<=0&&y<=0&&x+w>=ctx.canvas.width&&y+h>=ctx.canvas.height){visualAtlas.delete(ctx.canvas);atlasProbeResults.delete(ctx.canvas);return;}
+    if(results)for(const key of results.keys()){const [sx,sy,sw,sh]=key.split(':').map(Number);if(sx<x+w&&sx+sw>x&&sy<y+h&&sy+sh>y)results.delete(key);}
+    if(!cache)return;
     for(const [key,row] of cache.entries)if(row.left<x+w&&row.right>x&&row.top<y+h&&row.bottom>y){
       cache.entries.delete(key);const cell=Math.floor((row.left+row.right)/256)+':'+Math.floor((row.top+row.bottom)/256);cache.cells.get(cell)?.delete(key);
     }
@@ -57,17 +105,35 @@
     if(x>=0&&x<game.width&&y>=0&&y<game.height&&(y>game.height*.82||x<game.width*.38&&y>game.height*.55||x>game.width*.7&&y<game.height*.35||x<game.width*.3&&y<game.height*.2))return;
     visualPending.set(key,{...row,x,y,at:Date.now()});
   }
+  function observeTerrainView(ctx,image,args){
+    const job=apex.active;if(!job?.searchPetal||!gardenReady||!gardenData?.map||!pos||Date.now()-pos.updatedAt>1000||args.length!==2||image.width<48||image.width>4096||Math.abs(image.width-image.height)>2)return;
+    const t=ctx.getTransform();if(Math.abs(t.b)>.001||Math.abs(t.c)>.001||t.a<=0||t.d<=0)return;
+    const chunk=gardenData.map.tilewidth*4;if(!chunk)return;
+    const width=image.width*t.a,height=image.height*t.d,scale=(width+height)/(2*chunk),left=t.a*args[0]+t.e,top=t.d*args[1]+t.f;
+    if(!Number.isFinite(scale)||scale<.002||scale>5||!Number.isFinite(left)||!Number.isFinite(top))return;
+    const x=pos.x+(left-game.width/2)/scale,y=pos.y+(top-game.height/2)/scale,cx=Math.round(x/chunk),cy=Math.round(y/chunk),own=serverWorld.own;
+    terrainViewPending.push({scale,left,top,chunk,cx,cy,at:Date.now()});if(terrainViewPending.length>48)terrainViewPending.shift();
+  }
+  function measureTerrainView(){
+    const job=apex.active,now=Date.now(),rows=terrainViewPending.splice(0).filter(r=>now-r.at<100);if(!job?.searchPetal||now-(job.visionSince||now)<300||rows.length<3)return;
+    rows.sort((a,b)=>a.scale-b.scale);const scale=rows[Math.floor(rows.length/2)].scale,close=rows.filter(r=>Math.abs(r.scale-scale)<scale*.015),base=close[0],cells=new Map();if(!base)return;
+    // The camera can lead the player. Verify a repeated screen lattice instead of assuming its center is the player.
+    const step=scale*base.chunk;for(const row of close){const dx=(row.left-base.left)/step,dy=(row.top-base.top)/step,cx=Math.round(dx),cy=Math.round(dy);if(Math.abs(dx-cx)*step<=3&&Math.abs(dy-cy)*step<=3)cells.set(cx+':'+cy,{cx,cy});}
+    if(cells.size<3)return;const points=[...cells.values()];if(new Set(points.map(p=>p.cx)).size<2||new Set(points.map(p=>p.cy)).size<2||!points.some(a=>points.some(b=>Math.abs(a.cx-b.cx)+Math.abs(a.cy-b.cy)===1)))return;
+    job.viewScale={scale,at:now,source:'Rendered terrain grid',tiles:cells.size};
+  }
   function atlasImage(ctx,image,args){
-    if(ctx.canvas!==game)return;const cache=visualAtlas.get(image);if(!cache)return;
+    if(ctx.canvas!==game)return;observeTerrainView(ctx,image,args);const cache=visualAtlas.get(image);
     let sx=0,sy=0,sw=image.width,sh=image.height,dx=args[0],dy=args[1],dw=sw,dh=sh;
     if(args.length===4){dw=args[2];dh=args[3];}else if(args.length===8){[sx,sy,sw,sh,dx,dy,dw,dh]=args;}else if(args.length!==2)return;
     if(![sx,sy,sw,sh,dx,dy,dw,dh].every(Number.isFinite)||sw<=0||sh<=0)return;
-    const t=ctx.getTransform();
+    if(!cache){queueAtlasProbe(image,sx,sy,sw,sh);return;}const t=ctx.getTransform();let known=false;
     for(let by=Math.floor(sy/128);by<=Math.floor((sy+sh)/128);by++)for(let bx=Math.floor(sx/128);bx<=Math.floor((sx+sw)/128);bx++)for(const row of cache.cells.get(bx+':'+by)?.values()||[]){
       if(row.left<sx-2||row.right>sx+sw+2||row.top<sy-2||row.bottom>sy+sh+2)continue;
       const x=dx+((row.left+row.right)/2-sx)*dw/sw,y=dy+((row.top+row.bottom)/2-sy)*dh/sh;
-      rememberVisual({...row,textScale:row.textScale*Math.abs(dw/sw)*Math.hypot(t.a,t.b)},t.a*x+t.c*y+t.e,t.b*x+t.d*y+t.f);
+      known=true;rememberVisual({...row,textScale:row.textScale*Math.abs(dw/sw)*Math.hypot(t.a,t.b)},t.a*x+t.c*y+t.e,t.b*x+t.d*y+t.f);
     }
+    if(!known)queueAtlasProbe(image,sx,sy,sw,sh);
   }
   function learnRenderedMobTypes(){
     const pairs=[],bindings=new Map(),frameNumber=++visualFrameNumber;
@@ -102,7 +168,7 @@
     }
   }
   function visualFrame(){
-    if(!visualEnabled)return;visualRows=[...visualPending.values()];visualPending.clear();visualAt=Date.now();learnRenderedMobTypes();measureApexView();visualRAF=requestAnimationFrame(visualFrame);
+    if(!visualEnabled)return;const now=Date.now();measureTerrainView();if(visualPending.size){visualRows=[...visualPending.values()];visualPending.clear();visualAt=now;learnRenderedMobTypes();measureApexView();}else if(now-visualAt>250)visualRows=[];recoverCachedAtlasText();visualRAF=requestAnimationFrame(visualFrame);
   }
   const host = document.createElement('div');
   for (const [k,v] of Object.entries({position:'fixed',left:'12px',top:'65px',width:'min(310px, calc(100vw - 16px))',height:'auto',display:'block',transform:'none','z-index':'2147483647','pointer-events':'auto'})) host.style.setProperty(k,v,'important');
@@ -676,9 +742,9 @@
   panel.insertBefore(apexControls,mapbox);
   const apex={queue:[],active:null,seen:new Map(),completed:0,ignored:0,lastError:null};
   function apexDiagnostics(){return {
-    world:{protocol:serverWorld.protocol||null,frames:serverWorld.frames,rejected:serverWorld.rejected,records:serverWorld.entities.size,lastReject:serverWorld.lastReject||null,apexRecords:[...serverWorld.entities.values()].filter(e=>(e.kind===1||e.kind===6)&&e.rarity>=9).map(e=>({id:e.id,type:e.type,catalog:mobIDs[e.type],screen:verifiedMobTypes.get(e.type)?.type,x:e.x,y:e.y,hp:e.hp}))},
+    world:{protocol:serverWorld.protocol||null,entityProtocol:serverWorld.entityProtocol||null,lastEntityFrameAgeMs:serverWorld.updatedAt?Date.now()-serverWorld.updatedAt:null,lastPlayerFrameAgeMs:serverWorld.own?.at?Date.now()-serverWorld.own.at:null,refreshNeeded:apexNeedsWorldRefresh(),frames:serverWorld.frames,rejected:serverWorld.rejected,records:serverWorld.entities.size,lastReject:serverWorld.lastFailure||null,apexRecords:[...serverWorld.entities.values()].filter(e=>(e.kind===1||e.kind===6)&&e.rarity>=9).map(e=>({id:e.id,type:e.type,catalog:mobIDs[e.type],screen:verifiedMobTypes.get(e.type)?.type,x:e.x,y:e.y,hp:e.hp}))},
     catalog:{...mobCatalogStatus,trusted:mobCatalogTrusted},
-    screen:{lastFrameAgeMs:Date.now()-visualAt,labels:visualRows.length,pairs:visualPairs,learned:[...verifiedMobTypes].map(([id,v])=>({id,type:v.type,catalog:mobIDs[id]}))},
+    screen:{lastFrameAgeMs:Date.now()-visualAt,labels:visualRows.length,pairs:visualPairs,cacheRecovery:{...atlasProbeState},learned:[...verifiedMobTypes].map(([id,v])=>({id,type:v.type,catalog:mobIDs[id]}))},
     hunt:apex.active?{type:apex.active.type,entityId:apex.active.entityId,source:apex.active.trackingSource,searchPlan:apex.active.searchPlan,antennae:!!apex.active.searchPetal,viewScale:apex.active.viewScale,phase}:null
   };}
   button(apexControls,'Copy Apex diagnostics',async()=>{const text=JSON.stringify(apexDiagnostics(),null,2);try{await navigator.clipboard.writeText(text);apexStatus.textContent='Apex diagnostics copied.';}catch{let field=apexControls.querySelector('textarea');if(!field){field=element('textarea','','',apexControls);field.style.width='100%';field.rows=6;}field.value=text;field.focus();field.select();}});
@@ -803,7 +869,7 @@
     job.searchPetal=true;job.searchPetalPreset=job.preset;job.visionSince=Date.now();job.viewScale=null;return true;
   }
   function measureApexView(){
-    const job=apex.active,now=Date.now();if(!job||job.dead||!job.searchPetal||now-(job.visionSince||now)<300||now-(job.viewMeasuredAt||0)<250||!pos||now-serverWorld.updatedAt>1000)return;job.viewMeasuredAt=now;
+    const job=apex.active,now=Date.now();if(!job||job.dead||!job.searchPetal||job.viewScale?.source==='Rendered terrain grid'&&now-job.viewScale.at<500||now-(job.visionSince||now)<300||now-(job.viewMeasuredAt||0)<250||!pos||now-serverWorld.updatedAt>1000)return;job.viewMeasuredAt=now;
     const byType=new Map();for(const e of serverWorld.entities.values())if((e.kind===1||e.kind===6)&&e.hp>0){const type=apexMobType(e);if(!type)continue;const key=type+':'+e.rarity;if(byType.has(key))byType.set(key,null);else byType.set(key,e);}
     const names=visualRows.filter(r=>r.type),scales=[];
     for(const rarity of visualRows.filter(r=>r.rarity!==undefined).sort((a,b)=>b.rarity-a.rarity).slice(0,60)){
@@ -862,9 +928,13 @@
     if(seen.size>4000)for(const [key,at] of seen)if(now-at>60000)seen.delete(key);
   }
   function apexRecentlyScanned(job,target){return Date.now()-(job.coverageSeen?.get(Math.floor(target.x/600)+':'+Math.floor(target.y/600))||0)<30000;}
+  function apexWorldStale(){return serverWorld.rejected>20&&Date.now()-serverWorld.updatedAt>2000;}
   function apexNeedsWorldRefresh(){
-    const records=[...serverWorld.entities.values()],complete=e=>(e.kind===1||e.kind===6)&&Number.isFinite(e.type)&&Number.isFinite(e.rarity);
-    const missing=records.filter(e=>e.kind<0||(e.kind===1||e.kind===6)&&!Number.isFinite(e.type)).length;return (missing>=5||!records.length&&serverWorld.rejected>20&&serverWorld.lastReject?.stage==='world entities')&&(!records.some(complete)||serverWorld.rejected>20&&serverWorld.rejected/(serverWorld.frames+serverWorld.rejected)>.1);
+    const records=[...serverWorld.entities.values()],complete=e=>(e.kind===1||e.kind===6)&&Number.isFinite(e.type)&&Number.isFinite(e.rarity),job=apex.active;
+    const missing=records.filter(e=>e.kind<0||(e.kind===1||e.kind===6)&&!Number.isFinite(e.type)).length,badRate=serverWorld.rejected>20&&serverWorld.rejected/(serverWorld.frames+serverWorld.rejected)>.1;
+    if(missing>=5&&(!records.some(complete)||missing/records.length>.15||badRate))return true;
+    if(job&&!job.lastBoss&&missing&&phase==='searching Apex Ultra+ zone'&&Date.now()-(job.searchBeganAt||Date.now())>15000)return true;
+    return !records.length&&serverWorld.rejected>20&&(serverWorld.lastFailure||serverWorld.lastReject)?.stage==='world entities';
   }
   function shouldRejoinApex(job,etaSeconds){const rate=apexDecay(job);if(!job.lastBoss)return true;if(rate===null)return job.lastBoss.hp>.20;const stale=Math.max(0,(Date.now()-job.lastBoss.at)/1000);job.returnETA=etaSeconds;return job.lastBoss.hp-rate*(etaSeconds+stale)>.20;}
   async function selectLoadout(number,token){
@@ -962,7 +1032,7 @@
     const bosses=apexSafetyBosses(job);if(!bosses.length||!gardenReady)return keys;
     if(!pos||Date.now()-pos.updatedAt>1500)return [];
     const p=position(),own=serverWorld.own;
-    const liveSpeed=own&&Date.now()-serverWorld.updatedAt<1000?Math.hypot(own.vx||0,own.vy||0):0;
+    const liveSpeed=own&&Date.now()-own.at<1000?Math.hypot(own.vx||0,own.vy||0):0;
     job.movementSpeed=Math.max(speed,liveSpeed,(job.movementSpeed||300)*.85);
     const duration=seconds+.06,step=job.movementSpeed*duration,g=grid();
     const direction=list=>({x:Number(list.includes('d'))-Number(list.includes('a')),y:Number(list.includes('s'))-Number(list.includes('w'))});
@@ -1004,6 +1074,7 @@
     const savedPhase=phase,fight={standDistance:150};let lastHP=Infinity,damageAt=Date.now(),encounterAt=Date.now();phase='clearing route mob';
     try{
       while(running&&token===version&&!job.dead&&scene()==='play'){
+        if(apexWorldStale()){release();alt('keyup');await wait(250);continue;}
         if(!await liveGate(token))return false;
         const mob=serverWorld.entities.get(id);if(!mob||mob.hp<=0)return true;
         if(Date.now()-encounterAt>12000){(job.blockerAvoid??=new Map()).set(id,Date.now()+30000);apexStatus.textContent='Route mob is delaying the Apex hunt. Trying another path.';return true;}
@@ -1026,6 +1097,7 @@
   async function apexNavigate(destination,job,token,ignoreDeath=false){
     let attempts=0,failedPlans=0;job.navigateOutcome=null;
     while(running&&token===version&&(ignoreDeath||!job.dead)&&scene()==='play'){
+      if(!ignoreDeath&&apexWorldStale()){release();alt('keyup');apexStatus.textContent='Apex movement paused until fresh mob updates arrive.';await wait(250);continue;}
       if(!ignoreDeath&&phase==='searching Apex Ultra+ zone'&&apexTargetVisible(job)){job.navigateOutcome='found';return true;}
       const known=!ignoreDeath&&gardenReady&&apexSafetyBosses(job).find(b=>distance(position(),b)<apexStandRadius({lastBoss:b})+80);
       if(known){
@@ -1039,7 +1111,7 @@
         const path=plan(position(),safeGoal,allowed);
         const result=await navigate(path,token,false);
         if(result==='engage'&&job.blockerId){if(!await clearApexBlocker(job.blockerId,job,token))return false;continue;}
-        if(result==='arrived'||result==='found'||result==='zone'){job.navigateOutcome=result;return true;}if(result==='screen'||result==='stopped')return false;
+        if(result==='arrived'||result==='found'||result==='zone'||result==='view'||result==='snapshot'){job.navigateOutcome=result;return true;}if(result==='screen'||result==='stopped')return false;
       }catch(error){apex.lastError=error.message;if(++failedPlans>=3){release();job.navigateOutcome='blocked';return false;}}
       if(++attempts>20){release();apexStatus.textContent='Checking another route around the map walls.';return false;}release();await wait(180);
     }return false;
@@ -1092,12 +1164,22 @@
       while(running&&token===version){
         if(!await liveGate(token))return;
         if(job.dead)break;
+        if(scene()==='play'&&!job.worldRefreshed&&apexNeedsWorldRefresh()){
+          job.worldRefreshed=true;release();phase='refreshing mob snapshot';apexStatus.textContent='Player updates work, but mob records are incomplete. Refreshing once through the spawn menu.';
+          await returnToSpawnMenu(token);if(!running||token!==version)return;
+          if(scene()!=='play'&&!await apexEnsureSpawn(job,token))return;
+          dps=false;arrived=false;searchTargets=null;searchIndex=0;job.zoneEntered=false;job.engagedThisLife=false;tripBegan=Date.now();continue;
+        }
         if(scene()!=='play'){
           release();alt('keyup');dps=false;
           const eta=Math.max(8,(job.travelMs||Date.now()-tripBegan)/1000+8);
           if(shouldRejoinApex(job,eta)){phase='Apex respawn';apexStatus.textContent=job.lastBoss?`Respawning: expected Apex HP on return >20% (${Math.round(eta)}s).`:'Respawning to continue searching; Apex HP has not been observed yet.';if(!await apexEnsureSpawn(job,token))return;tripBegan=Date.now();arrived=false;job.zoneEntered=false;job.engagedThisLife=false;}
           else{phase='waiting dead for Apex';apexStatus.textContent='Waiting for the Apex defeat announcement; estimated HP on return is below 20%.';await wait(250);}
           continue;
+        }
+        if(apexWorldStale()){
+          release();alt('keyup');phase='waiting for mob updates';const failure=serverWorld.lastFailure;
+          apexStatus.textContent='Mob updates are unavailable; holding while the stream recovers'+(failure?.reason?' ('+failure.reason+').':'.');await wait(250);continue;
         }
         if(!await ensureApexVision(job,token))continue;observeApexEntities();
         if(!job.zoneEntered&&apexInUltraZone())job.zoneEntered=true;
@@ -1119,7 +1201,7 @@
           }else{
             apexStatus.textContent=`Searching for ${job.name}: ${searchWide?'wider biome':job.searchPlan?.specificSpawn?'mob spawn areas + Ultra+':'Ultra+'} coverage point ${searchIndex%searchTargets.length+1}/${searchTargets.length}.`;
           }
-          if(await apexNavigate(target,job,token)){if(!['found','zone'].includes(job.navigateOutcome)){if(reacquiring)job.reacquire.index++;else searchIndex++;}searchFailures=0;if(job.zoneEntered&&!arrived){job.zoneTravelMs=Date.now()-tripBegan;arrived=true;}if(job.zoneEntered&&!dps){dps=job.preset===3||await selectLoadout(3,token);if(dps)alt('keydown');}await wait(200);}else{if(scene()==='play'&&++searchFailures>=2){if(reacquiring)job.reacquire.index++;else searchIndex++;searchFailures=0;apexStatus.textContent='Search point blocked. Trying another reachable area.';}await wait(200);}continue;
+          if(await apexNavigate(target,job,token)){if(!['found','zone','view','snapshot'].includes(job.navigateOutcome)){if(reacquiring)job.reacquire.index++;else searchIndex++;}searchFailures=0;if(job.zoneEntered&&!arrived){job.zoneTravelMs=Date.now()-tripBegan;arrived=true;}if(job.zoneEntered&&!dps){dps=job.preset===3||await selectLoadout(3,token);if(dps)alt('keydown');}await wait(200);}else{if(scene()==='play'&&++searchFailures>=2){if(reacquiring)job.reacquire.index++;else searchIndex++;searchFailures=0;apexStatus.textContent='Search point blocked. Trying another reachable area.';}await wait(200);}continue;
         }
         job.reacquire=null;
         if(!job.engagedThisLife){job.travelMs=Date.now()-tripBegan;job.engagedThisLife=true;}
@@ -1554,7 +1636,10 @@
     route=path.slice();const finalGoal=mapping.toWorld(route[route.length-1]);let last=position(),stuckAt=Date.now(),stuckPos=last,segmentFrom=last,progressDistance=Infinity,progressTarget=null,heading=null,lastTick=performance.now(),measuredSpeed=300;
     if(route.length>1&&distance(last,mapping.toWorld(route[0]))<75)route.shift();
     while(running&&token===version){
+      if(apex.active&&!apex.active.dead&&!apex.active.worldRefreshed&&phase==='searching Apex Ultra+ zone'&&apexNeedsWorldRefresh()){release();alt('keyup');return 'snapshot';}
+      if(apex.active&&!apex.active.dead&&apexWorldStale()){release();alt('keyup');return 'world';}
       if(apex.active&&phase==='searching Apex Ultra+ zone'&&apexTargetVisible(apex.active)){release();return 'found';}
+      if(apex.active&&phase==='searching Apex Ultra+ zone'&&apex.active.searchPlan){const spacing=apexScanWidth(apex.active),prior=apex.active.searchPlan.spacing;if(spacing>=prior*1.3||spacing<prior*.8){release();return 'view';}}
       if(farming&&apexEnabled.checked&&apex.queue.length&&!apex.active){release();return 'apex';}
       if(scene()!=='play'){release();return 'screen';}if(realmMismatch()){release();await returnToSpawnMenu(token);return 'screen';}if(!await liveGate(token))return 'stopped';
       if(!pos||Date.now()-pos.updatedAt>1800){release();await preparePosition(token);const p=await freshPosition(token);if(!p)return 'screen';last=p;stuckPos=p;stuckAt=Date.now();}
@@ -1696,15 +1781,15 @@
   }
 
   // Read-only native server observations. A rejected frame never mutates entities.
-  const serverWorld={entities:new Map(),own:null,realm:null,updatedAt:0,frames:0,rejected:0};
-  function decodeOwnPlayer(bytes){
+  const serverWorld={entities:new Map(),own:null,realm:null,updatedAt:0,frames:0,rejected:0,lastFailure:null};
+  function decodeOwnPlayer(bytes,skipLegacy=false){
     if(bytes[0]!==5)return null;
     const view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),now=Date.now();
     const fail=reason=>{serverWorld.lastReject={reason,stage:'player header',bytes:bytes.length,at:now};return null;};
     const countsValid=o=>o+4<=bytes.length&&view.getUint16(o,true)<=20000&&view.getUint16(o+2,true)<=20000;
     // Older offline clients send the complete player state at fixed offsets.
-    if(bytes.length>=72&&serverWorld.protocol!=='delta-header'){
-      const own={x:view.getFloat32(17,true),y:view.getFloat32(21,true),vx:view.getFloat32(25,true),vy:view.getFloat32(29,true),hp:view.getFloat32(33,true),maxHP:view.getFloat32(37,true),xp:view.getFloat64(49,true),level:view.getUint16(57,true),at:now,protocol:'fixed-header',entityOffset:68+bytes[67]*6};
+    if(!skipLegacy&&bytes.length>=72&&serverWorld.protocol!=='delta-header'){
+      const own={x:view.getFloat32(17,true),y:view.getFloat32(21,true),vx:view.getFloat32(25,true),vy:view.getFloat32(29,true),hp:view.getFloat32(33,true),maxHP:view.getFloat32(37,true),xp:view.getFloat64(49,true),level:view.getUint16(57,true),at:now,serverTime:view.getFloat64(5,true),sequence:view.getUint32(1,true),protocol:'fixed-header',entityOffset:68+bytes[67]*6};
       if([own.x,own.y,own.vx,own.vy,own.hp,own.maxHP,own.xp].every(Number.isFinite)&&Math.abs(own.x)<=1e7&&Math.abs(own.y)<=1e7&&own.hp>=0&&own.maxHP>0&&own.hp<=own.maxHP*1.01&&own.xp>=0&&own.xp<=Number.MAX_SAFE_INTEGER&&own.level>=1&&own.level<=10000&&bytes[67]<=40&&countsValid(own.entityOffset))return own;
     }
     // The current public client uses x/y followed by optional state groups.
@@ -1712,10 +1797,10 @@
     try{
       if(bytes.length<30)throw Error('Truncated delta player header');
       let offset=22;const mask=bytes[21];if(mask&~7)throw Error('Unknown delta player flags: '+mask);
-      const own={x:view.getFloat32(13,true),y:view.getFloat32(17,true),vx:0,vy:0,at:now,entityId:view.getUint32(1,true),protocol:'delta-header'};
-      if(!Number.isFinite(own.x)||!Number.isFinite(own.y)||Math.abs(own.x)>1e7||Math.abs(own.y)>1e7)throw Error('Invalid delta player coordinates');
+      const own={x:view.getFloat32(13,true),y:view.getFloat32(17,true),vx:0,vy:0,at:now,serverTime:view.getFloat64(5,true),sequence:view.getUint32(1,true),protocol:'delta-header'};
+      if(!Number.isFinite(own.x)||!Number.isFinite(own.y)||!Number.isFinite(own.serverTime)||own.serverTime<0||own.serverTime>Number.MAX_SAFE_INTEGER||Math.abs(own.x)>1e7||Math.abs(own.y)>1e7)throw Error('Invalid delta player coordinates');
       const previous=serverWorld.own?.protocol==='delta-header'?serverWorld.own:null;
-      if(previous){for(const key of ['hp','maxHP','shield','maxShield','xp','level','stars'])own[key]=previous[key];const dt=(now-previous.at)/1000;if(dt>=.01&&dt<1){const vx=(own.x-previous.x)/dt,vy=(own.y-previous.y)/dt;if(Math.hypot(vx,vy)<20000){own.vx=vx;own.vy=vy;}}}
+      if(previous){for(const key of ['hp','maxHP','shield','maxShield','xp','level','stars'])own[key]=previous[key];const serverDt=(own.serverTime-previous.serverTime)/1000,dt=Number.isFinite(serverDt)&&serverDt>=.005&&serverDt<1?serverDt:(now-previous.at)/1000;if(dt>=.005&&dt<1){const vx=(own.x-previous.x)/dt,vy=(own.y-previous.y)/dt;if(Math.hypot(vx,vy)<20000){own.vx=vx;own.vy=vy;}}}
       if(!(mask&4)&&Number.isFinite(networkLifeTotals?.xp))own.xp=networkLifeTotals.xp;
       const need=n=>{if(offset+n>bytes.length)throw Error('Truncated delta player group');};
       if(mask&1){need(8);own.hp=view.getFloat32(offset,true);own.maxHP=view.getFloat32(offset+4,true);offset+=8;if(!Number.isFinite(own.hp)||!Number.isFinite(own.maxHP)||own.hp<0||own.maxHP<=0||own.hp>own.maxHP*1.01)throw Error('Invalid delta player HP');}
@@ -1727,53 +1812,68 @@
   }
   function decodeWorld(bytes,header=null){
     const own=header||decodeOwnPlayer(bytes);if(!own)return null;
-    for(let attempt=0;attempt<27;attempt++){let unknownIndex=0;try{
+    const preferred=mobCatalogStatus.source==='Loaded public client registry'&&own.protocol==='delta-header'?'public':serverWorld.entityProtocol||(own.protocol==='delta-header'&&mobCatalogStatus.source!=='Native client registry'?'public':'legacy');
+    const first=decodeWorldEntities(bytes,own,preferred);if(first)return first;
+    const firstError=serverWorld.lastReject,second=decodeWorldEntities(bytes,own,preferred==='public'?'legacy':'public');if(!second)serverWorld.lastReject=firstError;return second;
+  }
+  function decodeWorldEntities(bytes,own,entityProtocol){
+    const publicEntities=entityProtocol==='public';
+    for(let attempt=0;attempt<27;attempt++){let unknownIndex=0,context={offset:own.entityOffset,section:'counts'};try{
       const d=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);let o=own.entityOffset;
-      const need=n=>{if(o+n>bytes.length)throw Error('Truncated world');};
+      const need=n=>{context.offset=o;if(o+n>bytes.length)throw Error('Truncated world');};
       const u8=()=>{need(1);return d.getUint8(o++);},u16=()=>{need(2);const v=d.getUint16(o,true);o+=2;return v;},u32=()=>{need(4);const v=d.getUint32(o,true);o+=4;return v;},f32=()=>{need(4);const v=d.getFloat32(o,true);o+=4;if(!Number.isFinite(v))throw Error('Invalid world number');return v;};
       const skip=n=>{need(n);o+=n;},str=()=>{const n=u16();if(n>1024)throw Error('Invalid entity string');need(n);const v=new TextDecoder().decode(bytes.subarray(o,o+n));o+=n;return v;};
       const nc=u16(),dc=u16();if(nc>20000||dc>20000)throw Error('Invalid world entity counts');
-      const changes=new Map(),removed=[];
+      const changes=new Map(),removed=[];let lastID=0;const entityID=()=>{if(!publicEntities)return u32();let value=0;for(let shift=0;shift<=28;shift+=7){const byte=u8();if(shift===28&&byte>15)throw Error('Invalid public entity ID');value+=(byte&127)*2**shift;if(!(byte&128)){lastID=(lastID+value)>>>0;return lastID;}}throw Error('Invalid public entity ID');};
       for(let i=0;i<nc;i++){
-        const id=u32(),kind=u8(),type=u16(),rarity=u8(),flags=u8(),x=f32(),y=f32(),angle=u16(),radius=f32(),hpLowBits=u16(),hpHighBits=flags&8?u16():null;
+        const id=entityID(),kind=u8(),type=u16(),rarity=u8(),flags=u8(),x=f32(),y=f32(),angle=u16(),radius=f32(),hpLowBits=u16(),hpHighBits=flags&8?u16():null;
         const encoded=new DataView(new ArrayBuffer(4));encoded.setUint16(0,hpLowBits,true);if(hpHighBits!==null)encoded.setUint16(2,hpHighBits,true);const hp=hpHighBits!==null?1-encoded.getFloat32(0,true):hpLowBits/65535;
         if(![0,1,2,3,4,5,6].includes(kind)||rarity>31||radius<0||radius>1e6||!Number.isFinite(hp))throw Error('Unsupported entity kind or fields: '+kind);
-        const e={id,kind,type,rarity,flags,x,y,angle,radius,hp,hpLowBits,hpHighBits,hpFloat:hpHighBits!==null,at:own.at,poseAt:own.at,vx:0,vy:0};
-        if(kind===0){skip(10);str();str();skip(3);e.name=str();}
+        context={offset:o,section:'creation',id,kind};const e={id,kind,type,rarity,flags,x,y,angle,radius,hp,hpLowBits,hpHighBits,hpFloat:hpHighBits!==null,at:own.at,poseAt:own.at,poseServerTime:own.serverTime,vx:0,vy:0};
+        if(publicEntities){e.mobFlags=u8();if(kind===0){skip(14);e.skin=str();}else if(kind===2)skip(4);if(flags&1)e.name=str();}
+        else if(kind===0){skip(10);str();str();skip(3);e.name=str();}
         else if(kind===2)skip(5);else e.mobFlags=u8();
         changes.set(id,e);
       }
-      for(let i=0;i<dc;i++){
-        const id=u32(),mask=u8(),old=changes.get(id)||serverWorld.entities.get(id);
+      lastID=0;for(let i=0;i<dc;i++){
+        const id=entityID(),mask=u8(),old=changes.get(id)||serverWorld.entities.get(id);context={offset:o,section:'delta',id,kind:old?.kind??null,mask};
         // Low-mask updates have the same width for all entity kinds and can be
         // consumed even when the console hook was attached after their creation.
-        let inferred=null;if((!old||old.kind<0)&&(mask&32)){if(unknownIndex>=3)throw Error('Too many missing entity records');inferred=[0,2,1][Math.floor(attempt/3**unknownIndex)%3];unknownIndex++;}
+        let inferred=null;if(!publicEntities&&(!old||old.kind<0)&&(mask&32)){if(unknownIndex>=3)throw Error('Too many missing entity records');inferred=[0,2,1][Math.floor(attempt/3**unknownIndex)%3];unknownIndex++;}
         const e={...(old||{id,kind:-1}),at:own.at};if(inferred!==null)e.kind=inferred;
-        if(mask&1){e.x=f32();e.y=f32();const dt=Math.max(.01,(own.at-(old?.poseAt||own.at))/1000);if(old&&Number.isFinite(old.x)&&Number.isFinite(old.y)){const vx=(e.x-old.x)/dt,vy=(e.y-old.y)/dt;if(Math.hypot(vx,vy)<20000){e.vx=vx;e.vy=vy;}}e.poseAt=own.at;}if(mask&2)e.angle=u16();const hpLow=mask&4?u16():null;if(mask&8)e.flags=u8();if(mask&16)e.radius=f32();
-        if(mask&32){if(e.kind===0){skip(9);str();str();skip(3);}else if(e.kind===2)skip(5);else e.mobFlags=u8();}
-        const hpHigh=mask&64?u16():null;
+        if(publicEntities&&mask&128){need(4);const dx=d.getInt16(o,true)/32,dy=d.getInt16(o+2,true)/32;o+=4;if(Number.isFinite(old?.x)&&Number.isFinite(old?.y)){e.x=old.x+dx;e.y=old.y+dy;const serverDt=(own.serverTime-old.poseServerTime)/1000,dt=Number.isFinite(serverDt)&&serverDt>=.005&&serverDt<1?serverDt:Math.max(.01,(own.at-(old.poseAt||own.at))/1000);e.vx=dx/dt;e.vy=dy/dt;e.poseAt=own.at;e.poseServerTime=own.serverTime;}changes.set(id,e);continue;}
+        if(mask&1){e.x=f32();e.y=f32();const serverDt=(own.serverTime-old?.poseServerTime)/1000,dt=Number.isFinite(serverDt)&&serverDt>=.005&&serverDt<1?serverDt:Math.max(.01,(own.at-(old?.poseAt||own.at))/1000);if(old&&Number.isFinite(old.x)&&Number.isFinite(old.y)){const vx=(e.x-old.x)/dt,vy=(e.y-old.y)/dt;if(Math.hypot(vx,vy)<20000){e.vx=vx;e.vy=vy;}}e.poseAt=own.at;e.poseServerTime=own.serverTime;}if(mask&2)e.angle=u16();const publicHP=publicEntities&&(mask&4)?(mask&64?1-f32():u16()/65535):null,hpLow=!publicEntities&&mask&4?u16():null;if(mask&8)e.flags=u8();if(mask&16)e.radius=f32();
+        if(mask&32){if(publicEntities){skip(14);e.skin=str();}else if(e.kind===0){skip(9);str();str();skip(3);}else if(e.kind===2)skip(5);else e.mobFlags=u8();}
+        const hpHigh=!publicEntities&&mask&64?u16():null;
         if(mask&8){e.hpFloat=!!(e.flags&8);if(!e.hpFloat)e.hpHighBits=null;}
         if(hpLow!==null)e.hpLowBits=hpLow;if(hpHigh!==null&&(e.flags===undefined||e.flags&8)){e.hpHighBits=hpHigh;e.hpFloat=true;}
         if(hpLow!==null||hpHigh!==null){
           if(e.flags===undefined?e.hpFloat:!!(e.flags&8)){if(e.hpLowBits!==undefined&&e.hpHighBits!==null&&e.hpHighBits!==undefined){const encoded=new DataView(new ArrayBuffer(4));encoded.setUint16(0,e.hpLowBits,true);encoded.setUint16(2,e.hpHighBits,true);e.hp=1-encoded.getFloat32(0,true);}}
           else if(hpLow!==null)e.hp=hpLow/65535;
         }
+        if(publicHP!==null)e.hp=publicHP;
         if(e.hp!==undefined&&(!Number.isFinite(e.hp)||e.hp<-.02||e.hp>1.02))throw Error('Unsupported health encoding');if(e.hp!==undefined)e.hp=Math.max(0,Math.min(1,e.hp));if(mask&128)skip(1);changes.set(id,e);
       }
-      const count=u16();for(let i=0;i<count;i++)removed.push(u32());const effects=u16();skip(effects*26);if(o!==bytes.length)throw Error('Unsupported world trailer');
-      return {own,changes,removed};
-    }catch(error){if(!unknownIndex||attempt===26)serverWorld.lastReject={reason:error.message,stage:'world entities',protocol:own.protocol,bytes:bytes.length,at:Date.now()};if(!unknownIndex)return null;}}return null;
+      context={offset:o,section:'removals'};const count=u16();lastID=0;for(let i=0;i<count;i++)removed.push(entityID());context={offset:o,section:'effects'};const effects=u16();for(let i=0;i<effects;i++){need(26);const kind=bytes[o];context={offset:o,section:'effects',index:i,kind};skip(26);if(kind===7){const points=u8();skip(points*8);}}if(o!==bytes.length)throw Error('Unsupported world trailer');
+      return {own,changes,removed,entityProtocol};
+    }catch(error){if(!unknownIndex||attempt===26)serverWorld.lastReject={reason:error.message,stage:'world entities',protocol:own.protocol,entityProtocol,bytes:bytes.length,...context,at:Date.now()};if(!unknownIndex)return null;}}return null;
   }
   function acceptServerFrame(bytes){
-    if(bytes[0]===3){const totals=decodePlayerTotals(bytes);if(totals){if(networkLifeTotals&&networkLifeTotals.id!==totals.id){serverWorld.own=null;serverWorld.protocol=null;serverWorld.entities.clear();}networkLifeTotals=totals;networkLifeStatus.profilesDecoded++;networkLifeStatus.lastProfileAt=totals.receivedAt;}else networkLifeStatus.profilesRejected++;return;}
+    if(bytes[0]===3){const totals=decodePlayerTotals(bytes);if(totals){if(networkLifeTotals&&networkLifeTotals.id!==totals.id){serverWorld.own=null;serverWorld.protocol=null;serverWorld.entityProtocol=null;serverWorld.entities.clear();}networkLifeTotals=totals;networkLifeStatus.profilesDecoded++;networkLifeStatus.lastProfileAt=totals.receivedAt;}else networkLifeStatus.profilesRejected++;return;}
     if((bytes[0]===4&&bytes.length>=34)||(bytes[0]===24&&bytes.length>=18)){
       const d=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),offset=bytes[0]===4?25:9,code=bytes[offset],names={0:'garden',3:'desert',4:'computer',5:'ocean',6:'jungle',8:'ant_hell',9:'sewers'};
       if(d.getUint16(offset+1,true)>0&&d.getUint16(offset+3,true)>0&&d.getUint32(offset+5,true)===bytes.length-offset-9){serverWorld.entities.clear();if(apex.active){apex.active.entityId=null;apex.active.zeroHP=null;apex.active.identityReset=true;apex.active.coverageSeen=null;apex.active.standTarget=null;apex.active.hazard=null;apex.active.reacquire=null;}verifiedMobTypes.clear();visualVotes.clear();visualPending.clear();visualRows=[];serverWorld.realm=names[code]||null;if(serverWorld.realm){liveRealm={id:serverWorld.realm,at:Date.now(),source:'server'};window.flowrixRealm=liveRealm;}realmShapeCache=null;}
       return;
     }
     if(bytes[0]===5){
-      const own=decodeOwnPlayer(bytes);if(!own){serverWorld.rejected++;return;}serverWorld.own=own;serverWorld.updatedAt=own.at;pos={x:own.x,y:own.y,updatedAt:own.at};window.flowrixPosition=pos;if(networkLifeTotals&&Number.isFinite(own.xp))networkLifeTotals={...networkLifeTotals,xp:own.xp};
-      const frame=decodeWorld(bytes,own);if(!frame){serverWorld.rejected++;return;}serverWorld.frames++;serverWorld.protocol=own.protocol;
+      let own=decodeOwnPlayer(bytes,mobCatalogStatus.source==='Loaded public client registry'&&serverWorld.protocol!=='fixed-header');if(!own){serverWorld.rejected++;serverWorld.lastFailure=serverWorld.lastReject;return;}
+      let frame=decodeWorld(bytes,own);
+      if(!frame&&own.protocol==='fixed-header'&&serverWorld.protocol!=='fixed-header'){
+        const alternate=decodeOwnPlayer(bytes,true);if(alternate){const alternateFrame=decodeWorld(bytes,alternate);if(alternateFrame){own=alternate;frame=alternateFrame;}}
+      }
+      // Publish one selected header only; a rejected candidate cannot overwrite XP or position.
+      serverWorld.own=own;pos={x:own.x,y:own.y,updatedAt:own.at};window.flowrixPosition=pos;if(networkLifeTotals&&Number.isFinite(own.xp))networkLifeTotals={...networkLifeTotals,xp:own.xp};
+      if(!frame){serverWorld.rejected++;serverWorld.lastFailure=serverWorld.lastReject;return;}serverWorld.frames++;serverWorld.protocol=own.protocol;serverWorld.entityProtocol=frame.entityProtocol;serverWorld.updatedAt=own.at;
       for(const [id,e] of frame.changes)serverWorld.entities.set(id,e);for(const id of frame.removed)serverWorld.entities.delete(id);
       observeApexEntities();apexRecordCoverage(apex.active);return;
     }
