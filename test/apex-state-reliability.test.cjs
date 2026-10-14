@@ -17,6 +17,7 @@ async function withNavigator(check){
       clearInterval(lifeTimer);clearInterval(timer);clearInterval(recoveryTimer);
       window.fixtureNow=Date.now();Date.now=()=>window.fixtureNow;
       window.stateReliabilityTest={
+        repeatedDeaths(){const job={};const first=[1,2,3].map(()=>apexRecordDeath(job));const stopped=apexRecordDeath(job);fixtureNow+=1000;job.lastDamageAt=Date.now();const progress=apexRecordDeath(job);fixtureNow+=601000;const reset=apexRecordDeath(job);return {first,stopped,progress,reset};},
         silentStream(){
           serverWorld.frames=100;serverWorld.rejected=0;
           serverWorld.updatedAt=Date.now()-5000;
@@ -142,3 +143,5 @@ test('Stopping during Apex loot does not record a completed hunt or inventory vi
     assert(!String(result.status).startsWith('Loot visit complete'));
   });
 });
+
+test('Repeated Apex deaths without damage stop retries while recent boss damage permits a return',async()=>{await withNavigator(async page=>{const r=await page.evaluate(()=>stateReliabilityTest.repeatedDeaths());assert.deepEqual(r.first,[true,true,true]);assert.equal(r.stopped,false);assert.equal(r.progress,true);assert.equal(r.reset,true);});});

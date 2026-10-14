@@ -144,3 +144,32 @@ Additional corrections pause movement on silent entity-stream loss, reacquire a 
 Corpse travel and collection share a 90-second total deadline, and a stopped/cancelled loot visit cannot increment completed hunts. Repeated rendered defeat messages are deduplicated while retained on-screen, but can confirm a later appearance after the old message disappears.
 
 The 35-test browser suite passes, including movement after a DPS visibility loss, already-equipped Antennae, exact L-bank preset keys, unreachable loot, cancellation, and silent stream recovery. Native normal-damage trials are tracked separately; these controlled regressions are not proof of flawless live hunting.
+
+
+## Runtime petal IDs and combat recovery
+
+Petal IDs now include generated mob eggs before sorting, matching the native client registry. Sorting only explicit petal definitions gave wrong IDs for Antennae and most pictured farming petals. Native observed IDs include Antennae 3, Stick 151, Powder 116, Shell 134, Root 125, Magnet 100 and Bulb 18. Registry proof is in APEX-PROTOCOL-NOTES.md.
+
+Build selection and reserve swaps keep short retreat checks active while waiting for key chords and server confirmation. A player slightly inside a blocked grid cell can step toward adjacent open floor; that exception cannot cross a later wall or cut a blocked corner. Failed diagonals can use a safe single axis. Route clearing extends attack petals in the travel build without loading DPS outside Ultra merely to clear an ordinary mob.
+
+Fresh zero player HP prevents build selection before death controls appear. Four deaths within ten minutes without recent observed boss damage abandon that hunt and return to farming. Recent boss damage permits continued retries. This does not guarantee survival against a particular Apex or make an insufficient DPS build effective.
+
+## Unattended farming recovery
+
+Automatic farming now enables “Continue automatic farming in background” by default. The setting applies to automatic farming, build selection and respawn clicks; disabling it restores focus pauses. A browser that freezes/discards the page, a sleeping machine, a stopped Replit host, or a disconnected game cannot be kept running by this in-page script.
+
+An early farming-loop return schedules recovery instead of leaving a running flag with no controller. The watchdog also detects that state. Changing phase labels alone no longer hides a stationary stall. Rendering errors in the optional map preview are recorded without shutting down the farming controller.
+
+The five-retry limit now enters a cooldown until the oldest attempt leaves the ten-minute window, then automatically retries farming. Stop, Close, Escape and a user target change still cancel pending restarts. Recovery reasons and the next retry time are included in diagnostics, with the last 20 events retained for the current session.
+
+## Centipede body hunting
+
+Garden Centipede, Desert Centipede and Jungle Evil Centipede jobs match both head and corresponding body IDs at Apex rarity in the selected realm. A dying head hands off to a surviving body; HP/damage prediction resets when the selected segment changes. Known bodies remain search targets when they leave view, and low HP on one segment no longer causes the entire chain to enter the defeat wait.
+
+A defeat announcement does not end a centipede job immediately. Every observed segment must have confirmed zero-HP evidence, including an update and removal in one packet. After the last observed segment dies, a fresh reachable-floor search checks for additional bodies before entering loot. Blocked search floor or stale stream data cannot establish completion. The tracker groups Apex segments of the same variant in the realm because the packet reader does not expose a chain-owner ID; simultaneous same-variant chains are handled together. Drops near each observed segment corpse are eligible during the existing bounded loot visit.
+
+## Latest validation — 2026-10-14
+
+`npm test`: 51 tests passed, zero failed or skipped. Browser regressions exercise all three centipede variants, head announcements, untracked body zero-HP/removal packets, bodies lost from view, a full simulated head/body/tail hunt, background build/respawn input, cooldown retry, manual cancellation and unexpected farming-loop exits. These are controlled tests, not completed online Apex kills.
+
+Earlier timed offline native trials totalled 34.17 minutes. Only 22.12 minutes began with a verified living placement and normal damage enabled. The Ant Hell public-world transcoding trial accepted 13,581 frames with zero rejected frames and 97,510 combined compact updates; it moved about 1,212 units between consecutive DPS samples while retaining active Antennae. Normal-damage trials still had deaths and no confirmed Apex kill or loot. The Garden case started at zero HP and is recovery-only evidence. Trial source hashes and limitations are retained in APEX-VALIDATION.json; those trials preceded the latest build-wait and unattended/centipede changes. No flawless live-hunting or one-hour normal-damage survival claim is established.

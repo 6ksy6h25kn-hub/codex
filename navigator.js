@@ -232,11 +232,17 @@
   const raw = document.createElement('canvas'), rc = raw.getContext('2d',{willReadFrequently:true});
   const distance = (a,b) => Math.hypot(a.x-b.x,a.y-b.y);
   function alt(type){game.dispatchEvent(new KeyboardEvent(type,{key:'Alt',code:'AltLeft',keyCode:18,which:18,altKey:type==='keydown',bubbles:true,cancelable:true}));}
-  const autoRecovery={enabled:false,pending:null,attempts:[],lastReason:null,lastProgress:Date.now(),point:null,phase:null,bossHP:null,generation:0};
+  const backgroundControls=element('label','','',settings),backgroundFarm=element('input','','',backgroundControls);backgroundFarm.type='checkbox';backgroundFarm.checked=true;backgroundControls.append(' Continue automatic farming in background');
+  backgroundFarm.onchange=()=>saveSettings();
+  function inputAllowed(){return autoRecovery.enabled&&backgroundFarm.checked||!document.hidden&&document.hasFocus();}
+  const autoRecovery={enabled:false,pending:null,attempts:[],lastReason:null,lastProgress:Date.now(),point:null,phase:null,bossHP:null,generation:0,loopToken:null,hasStarted:false,nextRetryAt:null,events:[]};
+  function recoveryEvent(reason){autoRecovery.events.unshift({at:Date.now(),reason});autoRecovery.events=autoRecovery.events.slice(0,20);}
   function recoveryReason(now=Date.now()){
-    if(!autoRecovery.enabled||!running||autoRecovery.pending||document.hidden||!document.hasFocus())return null;
+    if(!autoRecovery.enabled||autoRecovery.pending||capturing||!inputAllowed())return null;
+    if(autoRecovery.hasStarted&&(!running||autoRecovery.loopToken!==version))return 'Farming loop ended unexpectedly';
+    if(!running)return null;
     if(pos&&(!autoRecovery.point||distance(pos,autoRecovery.point)>100)){autoRecovery.point={x:pos.x,y:pos.y};autoRecovery.lastProgress=now;}
-    if(autoRecovery.phase!==phase){autoRecovery.phase=phase;autoRecovery.lastProgress=now;}
+    autoRecovery.phase=phase;
     const boss=apex.active?.lastBoss;if(boss&&apexTargetVisible(apex.active)&&Number.isFinite(boss.hp)){if(autoRecovery.bossHP===null||boss.hp<autoRecovery.bossHP-.001)autoRecovery.lastProgress=now;autoRecovery.bossHP=boss.hp;}else autoRecovery.bossHP=null;
     const own=serverWorld.own;if(own&&now-own.at>20000&&scene()==='play')return 'Player data stopped updating';
     if(apex.active&&!apex.active.dead&&serverWorld.rejected>20&&now-serverWorld.updatedAt>20000)return 'Mob stream did not recover';
@@ -246,13 +252,13 @@
   }
   function scheduleRecovery(reason){
     if(!autoRecovery.enabled||autoRecovery.pending)return false;const now=Date.now();autoRecovery.attempts=autoRecovery.attempts.filter(t=>now-t<600000);
-    if(autoRecovery.attempts.length>=5){stop('Automatic recovery paused after five retries in ten minutes: '+reason+'. Check the game, then press Start.');return false;}
-    autoRecovery.attempts.push(now);autoRecovery.lastReason=reason;const delay=Math.min(30000,1000*2**(autoRecovery.attempts.length-1));
-    stop('Recovering automatically: '+reason,true);const generation=autoRecovery.generation;
-    autoRecovery.pending=setTimeout(()=>{autoRecovery.pending=null;if(!autoRecovery.enabled||autoRecovery.generation!==generation)return;temporaryBlocks.clear();obstacleVersion++;gridCache=null;gardenReady=false;gardenData=null;mapping=null;screenCache=null;frameCache=null;travelLoadoutActive=false;deathLoadoutSwapPending=true;refreshTextCache();autoRecovery.lastProgress=Date.now();autoRecovery.point=null;start(true);},delay);
+    const cooling=autoRecovery.attempts.length>=5,delay=cooling?Math.max(1000,autoRecovery.attempts[0]+600000-now+100):Math.min(30000,1000*2**autoRecovery.attempts.length);
+    if(!cooling)autoRecovery.attempts.push(now);autoRecovery.lastReason=reason;autoRecovery.nextRetryAt=now+delay;recoveryEvent((cooling?'Retry cooldown: ':'Recovering: ')+reason);
+    stop((cooling?'Recovery cooldown; farming will retry automatically at '+new Date(autoRecovery.nextRetryAt).toLocaleTimeString()+': ':'Recovering automatically: ')+reason,true);const generation=autoRecovery.generation;
+    autoRecovery.pending=setTimeout(()=>{autoRecovery.pending=null;autoRecovery.nextRetryAt=null;if(!autoRecovery.enabled||autoRecovery.generation!==generation)return;temporaryBlocks.clear();obstacleVersion++;gridCache=null;gardenReady=false;gardenData=null;mapping=null;screenCache=null;frameCache=null;travelLoadoutActive=false;deathLoadoutSwapPending=true;if(apex.active){apex.active.historyStatus='Interrupted by recovery: '+reason;renderApexHistory();apex.active=null;}refreshTextCache();autoRecovery.lastProgress=Date.now();autoRecovery.point=null;void start(true).catch(error=>scheduleRecovery(error.message));},delay);
     return true;
   }
-  function stop(message='Stopped.',preserveRecovery=false) {  if(!preserveRecovery){autoRecovery.enabled=false;autoRecovery.generation++;if(autoRecovery.pending){clearTimeout(autoRecovery.pending);autoRecovery.pending=null;}}if(apex.active?.savedFarm&&spawnSelect.value===apex.active.map){spawnSelect.value=apex.active.savedFarm.map;gardenReady=false;gardenData=null;mapping=null;gridCache=null;rebuildRarities();raritySelect.value=apex.active.savedFarm.rarity;apexFarmRestorePending=true;}running=false;expectedLoadout=null; awaitingPalette=false;phase='stopped';version++;captureVersion++;release();alt('keyup');pending?.();status.textContent=message; }
+  function stop(message='Stopped.',preserveRecovery=false) {  if(!preserveRecovery){autoRecovery.enabled=false;autoRecovery.generation++;autoRecovery.nextRetryAt=null;if(autoRecovery.pending){clearTimeout(autoRecovery.pending);autoRecovery.pending=null;}}if(apex.active?.savedFarm&&spawnSelect.value===apex.active.map){spawnSelect.value=apex.active.savedFarm.map;gardenReady=false;gardenData=null;mapping=null;gridCache=null;rebuildRarities();raritySelect.value=apex.active.savedFarm.rarity;apexFarmRestorePending=true;}running=false;expectedLoadout=null; awaitingPalette=false;phase='stopped';version++;captureVersion++;release();alt('keyup');pending?.();status.textContent=message; }
   function wait(ms) {
     return new Promise(resolve => { const timer=setTimeout(done,ms); function done(){clearTimeout(timer);if(pending===done)pending=null;resolve();} pending=done; });
   }
@@ -512,7 +518,7 @@
   }
   function saveSettings(){
     try{
-      const data={palette:[...palette],rarity:raritySelect.value,spawn:spawnSelect.value,margin:margin.value,region,mapping:mapping?.coeffs||null};
+      const data={palette:[...palette],rarity:raritySelect.value,spawn:spawnSelect.value,margin:margin.value,backgroundFarm:backgroundFarm.checked,region,mapping:mapping?.coeffs||null};
       localStorage.setItem('flowrixAutoFarmV1',JSON.stringify(data));
     }catch{}
   }
@@ -522,6 +528,7 @@
   function loadSettings(){
     try{
       const data=JSON.parse(localStorage.getItem('flowrixAutoFarmV1')||'null');if(!data)return;
+      if(typeof data.backgroundFarm==='boolean')backgroundFarm.checked=data.backgroundFarm;
       for(const [name,rgb] of data.palette||[])if(typeof name==='string'&&Array.isArray(rgb)&&rgb.length===3&&rgb.every(v=>Number.isFinite(v)&&v>=0&&v<=255)){if(!rarityNames.includes(name))rarityNames.push(name);palette.set(name,rgb);}
       rebuildRarities();if([...raritySelect.options].some(o=>o.value===data.rarity))raritySelect.value=data.rarity;
       const savedSpawn=data.spawn==='Ant Hell'?'Normal Ant Hell':data.spawn;if(farmMapNames.includes(savedSpawn))spawnSelect.value=savedSpawn;if(['Ocean','Jellyfish zone'].includes(savedSpawn)){rebuildRarities();raritySelect.value=savedSpawn==='Jellyfish zone'?'Jellyfish zone':data.rarity;}
@@ -597,7 +604,8 @@
     const ready=freshText('Ready'),cont=freshText('Continue');
     if(Date.now()-menuSeen<900&&ready&&menuSeen>=deathSeen)return {kind:'menu',button:ready,source:'Ready text'};
     if(Date.now()-deathSeen<900&&cont)return {kind:'death',button:cont,source:'Continue text'};
-    try{return visualScreens();}catch{return {kind:'play'};}
+    let visual;try{visual=visualScreens();}catch{visual={kind:'play'};}
+    const own=serverWorld.own;if(visual.kind==='play'&&own&&Date.now()-own.at<1000&&own.maxHP>0&&own.hp===0)return cont?{kind:'death',button:cont,source:'Fresh server HP and Continue text'}:{kind:'dead-pending',button:null,source:'Fresh server HP'};return visual;
   }
   function scene(){return screenInfo().kind;}
   function domPoint(name){
@@ -609,12 +617,12 @@
     return null;
   }
   async function clickPoint(p,token){
-    if(!p||Date.now()-p.at>1000||token!==version||!running||document.hidden||!document.hasFocus())return false;
+    if(!p||Date.now()-p.at>1000||token!==version||!running||!inputAllowed())return false;
     const r=game.getBoundingClientRect(),data={clientX:r.left+p.x*r.width/game.width,clientY:r.top+p.y*r.height/game.height,button:0,bubbles:true,cancelable:true};
     function dispatch(type,buttons){const d={...data,buttons};(p.dom||game).dispatchEvent(type.startsWith('pointer')&&globalThis.PointerEvent?new PointerEvent(type,{...d,pointerId:1,pointerType:'mouse',isPrimary:true}):new MouseEvent(type,d));}
     dispatch('pointermove',0);dispatch('mousemove',0);await wait(80);if(token!==version||!running)return false;
     dispatch('pointerdown',1);dispatch('mousedown',1);await wait(110);dispatch('pointerup',0);dispatch('mouseup',0);
-    if(token!==version||!running||document.hidden||!document.hasFocus())return false;dispatch('click',0);frameCache=null;return true;
+    if(token!==version||!running||!inputAllowed())return false;dispatch('click',0);frameCache=null;return true;
   }
   async function clickText(name,token){return clickPoint(freshText(name),token);}
   function spawnPoint(info){
@@ -649,7 +657,7 @@
     if(result.error>1.1)throw new Error('Marker samples are noisy');result.records=good;return result;
   }
   async function liveGate(token){
-    while(running&&token===version&&(document.hidden||!document.hasFocus())){release();status.textContent='Paused while the game tab is not focused.';await wait(250);}
+    while(running&&token===version&&!inputAllowed()){release();alt('keyup');status.textContent='Paused while the game tab is not focused.';autoRecovery.lastProgress=Date.now();await wait(250);}
     return running&&token===version;
   }
   async function autoCalibrate(token,verify=true){
@@ -707,12 +715,15 @@
     if(vision&&apex.active){apex.active.searchPetal=true;apex.active.visionSince=Date.now();}
     return true;
   }
+  async function apexLoadoutWait(ms,token){
+    let elapsed=0;while(elapsed<ms){if(!running||token!==version)return;const job=apex.active;if(job&&!job.dead&&gardenReady&&pos&&Date.now()-pos.updatedAt<1000&&scene()==='play')hold(apexSafeKeys(job,[],.05));const slice=Math.min(50,ms-elapsed);await wait(slice);elapsed+=slice;}
+  }
   async function swapTravelLoadout(token,keys=['3','4']){
     for(const key of keys){
       if(token!==version||!running||scene()!=='play')return false;
-      send('keydown',key);await wait(90);send('keyup',key);if(expectedLoadout){const i=(Number(key)+9)%10,j=i+10;if(i>=0&&i<10&&j<expectedLoadout.slots.length){[expectedLoadout.slots[i],expectedLoadout.slots[j]]=[expectedLoadout.slots[j],expectedLoadout.slots[i]];expectedLoadout.swaps.push(key);}}
+      send('keydown',key);await apexLoadoutWait(90,token);send('keyup',key);if(expectedLoadout){const i=(Number(key)+9)%10,j=i+10;if(i>=0&&i<10&&j<expectedLoadout.slots.length){[expectedLoadout.slots[i],expectedLoadout.slots[j]]=[expectedLoadout.slots[j],expectedLoadout.slots[i]];expectedLoadout.swaps.push(key);}}
       if(token!==version||!running||scene()!=='play')return false;
-      await wait(60);
+      await apexLoadoutWait(60,token);
     }
     return token===version&&running&&scene()==='play';
   }
@@ -723,7 +734,7 @@
   const antSewerReservePetals=['shell','powder','powder','powder','stick','stick','magnet',null,null,'shell'];
   function farmBuildSwapKeys(slots,ids,full=false){const keys=[];for(let i=0;i<antSewerFarmPetals.length;i++){const wanted=ids.indexOf(antSewerFarmPetals[i]),reserve=antSewerReservePetals[i]===null?65535:ids.indexOf(antSewerReservePetals[i]);if(wanted<0||full&&reserve<0)return null;const active=slots?.[i]?.type,stored=slots?.[i+10]?.type;if(active===wanted&&(!full||stored===reserve))continue;if(stored!==wanted||full&&active!==reserve)return null;keys.push(String((i+1)%10));}return keys;}
   async function applyAntSewerFarmBuild(token){
-    let ids;try{ids=Object.keys(JSON.parse(Module.FS.readFile('/data/petals.json',{encoding:'utf8'}))).sort();}catch{status.textContent='Saved farming preset loaded; screenshot slot check unavailable.';return true;}
+    const ids=runtimePetalCatalog()?.ids;if(!ids){status.textContent='Saved farming preset loaded; screenshot slot check unavailable.';return true;}
     const full=farmPreset()===5,keys=farmBuildSwapKeys(networkLifeTotals?.equipped,ids,full);if(!keys){status.textContent='Save the pictured Ant Hell/Sewers build as L'+farmPreset()+': active 4 Stick, Powder, Antennae, Shell, Root, Magnet, Bulb; reserve Shell, 3 Powder, 2 Stick, Magnet, empty, empty, Shell. Continuing with the saved preset.';return true;}
     if(keys.length&&!await swapTravelLoadout(token,keys))return false;
     const began=Date.now();for(let i=0;keys.length&&i<12&&running&&token===version;i++){if(networkLifeTotals?.receivedAt>began&&farmBuildSwapKeys(networkLifeTotals.equipped,ids,full)?.length===0)break;await wait(100);}
@@ -785,7 +796,10 @@
   const apexHistoryText=element('textarea','','',apexControls);apexHistoryText.readOnly=true;apexHistoryText.rows=8;apexHistoryText.setAttribute('aria-label','Apex spawn and loot history');Object.assign(apexHistoryText.style,{width:'100%',boxSizing:'border-box',resize:'vertical',overflowY:'auto',fontSize:'12px'});
   function renderApexHistory(newSpawn=false){const scroll=apexHistoryText.scrollTop;apexHistoryText.value=apexHistory.length?apexHistory.map(j=>{const time=new Date(j.spawnedAt).toLocaleString(),gains=j.lootGains||[];return time+' — Apex '+j.name+' ('+j.map+')\n'+(j.historyStatus||'Queued')+' · '+(gains.length?'Loot confirmed (inventory gains during loot): '+gains.map(p=>p.count+'× '+p.name).join(', '):'Loot: not confirmed');}).join('\n\n'):'No Apex spawns recorded yet.';apexHistoryText.scrollTop=newSpawn?0:scroll;}
   function recordApexSpawn(job){apexHistory.unshift(job);if(apexHistory.length>200)apexHistory.pop();renderApexHistory(true);}
-  function apexPetalName(type,rarity){let name='Petal #'+type;try{const registry=JSON.parse(Module.FS.readFile('/data/petals.json',{encoding:'utf8'})),key=Object.keys(registry).sort()[type];if(key)name=registry[key].name||key;}catch{}return (['Common','Uncommon','Rare','Epic','Legendary','Mythic','Ultra','Super','Unique','Apex'][rarity]||'Rarity '+rarity)+' '+name;}
+  function buildPetalIDs(petals,mobs){const ids=Object.keys(petals);for(const name of Object.keys(mobs))if(!name.endsWith('_pet')&&!Object.prototype.hasOwnProperty.call(petals,name+'_egg'))ids.push(name+'_egg');return ids.sort();}
+  let runtimePetalCache=null;
+  function runtimePetalCatalog(){if(runtimePetalCache?.module===window.Module)return runtimePetalCache;try{const petals=JSON.parse(Module.FS.readFile('/data/petals.json',{encoding:'utf8'})),mobs=JSON.parse(Module.FS.readFile('/data/mobs.json',{encoding:'utf8'}));runtimePetalCache={module:window.Module,petals,mobs,ids:buildPetalIDs(petals,mobs)};return runtimePetalCache;}catch{return null;}}
+  function apexPetalName(type,rarity){let name='Petal #'+type;const catalog=runtimePetalCatalog(),key=catalog?.ids[type];if(key){const explicit=catalog.petals[key];if(explicit)name=explicit.name||key;else if(key.endsWith('_egg'))name=(catalog.mobs[key.slice(0,-4)]?.name||key.slice(0,-4))+' Egg';}return (['Common','Uncommon','Rare','Epic','Legendary','Mythic','Ultra','Super','Unique','Apex'][rarity]||'Rarity '+rarity)+' '+name;}
   function updateApexLoot(job,totals){if(!job?.lootInventoryStart||totals?.id!==job.lootAccount||totals.receivedAt<job.lootInventoryAt)return;const gains=[];for(const p of totals.inventory||[]){const count=p.count-(job.lootInventoryStart[p.type+':'+p.rarity]||0);if(count>0)gains.push({...p,count,name:apexPetalName(p.type,p.rarity)});}if(JSON.stringify(gains)!==JSON.stringify(job.lootGains||[])){job.lootGains=gains;renderApexHistory();}}
   function beginApexLoot(job){job.historyStatus='Looting';const totals=networkLifeTotals;if(totals&&Date.now()-totals.receivedAt<3000){job.lootAccount=totals.id;job.lootInventoryAt=Date.now();job.lootInventoryStart=Object.fromEntries((totals.inventory||[]).map(p=>[p.type+':'+p.rarity,p.count]));}renderApexHistory();}
   renderApexHistory();
@@ -794,7 +808,8 @@
     world:{protocol:serverWorld.protocol||null,entityProtocol:serverWorld.entityProtocol||null,lastEntityFrameAgeMs:serverWorld.updatedAt?Date.now()-serverWorld.updatedAt:null,lastPlayerFrameAgeMs:serverWorld.own?.at?Date.now()-serverWorld.own.at:null,refreshNeeded:apexNeedsWorldRefresh(),frames:serverWorld.frames,rejected:serverWorld.rejected,records:serverWorld.entities.size,lastReject:serverWorld.lastFailure||null,apexRecords:[...serverWorld.entities.values()].filter(e=>(e.kind===1||e.kind===6)&&e.rarity>=9).map(e=>({id:e.id,type:e.type,catalog:mobIDs[e.type],screen:verifiedMobTypes.get(e.type)?.type,x:e.x,y:e.y,radius:e.radius,hp:e.hp}))},
     catalog:{...mobCatalogStatus,trusted:mobCatalogTrusted},
     screen:{lastFrameAgeMs:Date.now()-visualAt,labels:visualRows.length,pairs:visualPairs,cacheRecovery:{...atlasProbeState},learned:[...verifiedMobTypes].map(([id,v])=>({id,type:v.type,catalog:mobIDs[id]}))},
-    hunt:apex.active?{type:apex.active.type,entityId:apex.active.entityId,liveTracked:apexTargetVisible(apex.active),lastSeenAgeMs:apex.active.lastBoss?.at?Date.now()-apex.active.lastBoss.at:null,source:apexTargetVisible(apex.active)?apex.active.trackingSource:apex.active.lastBoss?'Last known position; awaiting a fresh entity':apex.active.trackingSource,viewCoverage:apexViewCoverage(apex.active),searchPlan:apex.active.searchPlan,antennae:!!apex.active.searchPetal,viewScale:apex.active.viewScale,phase}:null
+    recovery:{enabled:autoRecovery.enabled,pending:!!autoRecovery.pending,nextRetryAt:autoRecovery.nextRetryAt,lastReason:autoRecovery.lastReason,events:autoRecovery.events.map(e=>({...e}))},
+    hunt:apex.active?{type:apex.active.type,segments:apex.active.segments?[...apex.active.segments.values()].map(s=>({id:s.id,type:s.type,hp:s.hp,dead:!!s.dead,x:s.x,y:s.y,ageMs:Date.now()-s.at})):null,segmentSweep:apex.active.segmentSweep||null,entityId:apex.active.entityId,liveTracked:apexTargetVisible(apex.active),lastSeenAgeMs:apex.active.lastBoss?.at?Date.now()-apex.active.lastBoss.at:null,source:apexTargetVisible(apex.active)?apex.active.trackingSource:apex.active.lastBoss?'Last known position; awaiting a fresh entity':apex.active.trackingSource,viewCoverage:apexViewCoverage(apex.active),searchPlan:apex.active.searchPlan,antennae:!!apex.active.searchPetal,viewScale:apex.active.viewScale,phase}:null
   };}
   button(apexControls,'Copy Apex diagnostics',async()=>{const text=JSON.stringify(apexDiagnostics(),null,2);try{await navigator.clipboard.writeText(text);apexStatus.textContent='Apex diagnostics copied.';}catch{let field=apexControls.querySelector('textarea.apex-diagnostics');if(!field){field=element('textarea','apex-diagnostics','',apexControls);field.style.width='100%';field.rows=6;}field.value=text;field.focus();field.select();}});
   const apexGroups={garden:'Garden',desert:'Desert',computer:'Computer',sewers:'Sewers',ocean:'Ocean',jungle:'Jungle',ant_hell:'Normal Ant Hell',fire_ant_hell:'Fire Ant Hell',termite_ant_hell:'Termite Ant Hell'};
@@ -848,12 +863,45 @@
     for(const map of Object.values(apexGroups))if(text.toLowerCase().includes(map.toLowerCase()))return map;
     return null;
   }
+  function apexSegmented(job){return /^(?:desert_|evil_)?centipede$/.test(job?.type||'');}
+  function apexMatchesType(job,type){return type===job.type||apexSegmented(job)&&type===job.type+'_body';}
+  function confirmApexAnnouncement(job,source){
+    if(apexSegmented(job)){job.defeatAnnouncedAt=Date.now();job.historyStatus='Defeat announced; checking all centipede segments';}
+    else{job.dead=true;job.killedAt=Date.now();job.defeatSource=source;job.historyStatus='Defeated';}
+    renderApexHistory();
+  }
+  function apexRecordSegment(job,e,at=serverWorld.updatedAt){
+    if(!apexSegmented(job)||(e.kind!==1&&e.kind!==6)||e.rarity<9||!apexMatchesType(job,apexMobType(e))||!Number.isFinite(e.hp)||!Number.isFinite(e.x)||!Number.isFinite(e.y))return;
+    const segments=job.segments||(job.segments=new Map()),old=segments.get(e.id),record={...old,...e,type:apexMobType(e),at,poseAt:e.poseAt??e.at??at};
+    if(e.hp>0){record.dead=false;record.zeroAt=null;job.lastSegmentAliveAt=at;if(!old||old.dead){job.segmentRevision=(job.segmentRevision||0)+1;job.segmentSweep=null;}}
+    else if(record.zeroAt==null)record.zeroAt=at;
+    segments.set(e.id,record);
+  }
+  function apexSegmentsNeedSweep(job){return apexSegmented(job)&&!!(job.defeatAnnouncedAt||[...(job.segments?.values()||[])].some(s=>s.dead))&&![...(job.segments?.values()||[])].some(s=>!s.dead);}
+  function completeApexSegments(job){
+    if(!apexSegmentsNeedSweep(job)||!job.segmentSweep?.completed||job.segmentSweep.blocked||Date.now()-serverWorld.updatedAt>1500||Date.now()-(job.lastSegmentAliveAt||job.defeatAnnouncedAt||0)<5000)return false;
+    job.dead=true;job.killedAt=Date.now();job.defeatSource='Centipede segment deaths and completed search sweep';job.historyStatus='All observed centipede segments defeated; cleanup sweep complete';renderApexHistory();return true;
+  }
+  function observeApexSegments(job){
+    if(Date.now()-serverWorld.updatedAt>1500)return;
+    for(const e of serverWorld.entities.values())apexRecordSegment(job,e);
+    for(const s of job.segments?.values()||[])if(!s.dead&&s.hp===0&&s.zeroAt!=null&&serverWorld.updatedAt-s.zeroAt>=350){s.dead=true;s.deadAt=Date.now();(job.segmentCorpses||(job.segmentCorpses=[])).push({id:s.id,x:s.x,y:s.y});job.segmentRevision=(job.segmentRevision||0)+1;job.segmentSweep=null;}
+    const candidates=[...serverWorld.entities.values()].filter(e=>(e.kind===1||e.kind===6)&&e.rarity>=9&&e.hp>0&&Number.isFinite(e.x)&&Number.isFinite(e.y)&&apexMatchesType(job,apexMobType(e)));
+    const near=(a,b)=>pos?(distance(pos,a)-(a.radius||0))-(distance(pos,b)-(b.radius||0)):b.radius-a.radius;
+    const boss=candidates.find(e=>e.id===job.entityId)||candidates.sort(near)[0];
+    const remembered=boss?null:[...(job.segments?.values()||[])].filter(s=>!s.dead&&s.hp>0).sort(near)[0],next=boss||remembered;
+    if(!next){job.entityId=null;job.identityReset=true;if(job.lastBoss)job.lastBoss={...job.lastBoss,hp:0};return;}
+    if(job.entityId!==next.id){job.samples=[];job.damageWatch=null;job.standTarget=null;job.hazard=null;job.reacquire=null;job.zeroHP=null;}
+    job.entityId=next.id;job.identityReset=!boss;job.trackingSource=boss?'Live centipede '+(apexMobType(boss).endsWith('_body')?'body segment':'head'):'Last known centipede segment';
+    job.lastBoss={x:next.x,y:next.y,hp:next.hp,radius:next.radius,vx:next.vx||0,vy:next.vy||0,angle:next.angle,poseAt:next.poseAt??next.at,at:boss?serverWorld.updatedAt:next.at,id:next.id};
+    job.samples??=[];if(boss&&(!job.samples.length||serverWorld.updatedAt-job.samples.at(-1).at>700)){if(job.samples.length&&boss.hp>job.samples.at(-1).hp+.02)job.samples=[];job.samples.push({hp:boss.hp,at:serverWorld.updatedAt});job.samples=job.samples.filter(s=>Date.now()-s.at<30000).slice(-40);}
+  }
   const renderedApexDefeats=new Map();
   function observeRenderedApexDefeat(text,ctx){
     const match=String(text).trim().match(/^A(?:n)?\s+Apex\s+(.+?)\s+has\s+been\s+defeated\b/i);if(!match)return;
     const color=String(ctx?.fillStyle||''),hex=color.match(/^#([0-9a-f]{6})$/i);if(!hex)return;const c=parseInt(hex[1],16),r=c>>16,g=c>>8&255,b=c&255;if(r<90||b<110||g>Math.min(r,b)*.8)return;
     const key=String(text).trim().toLowerCase(),now=Date.now(),last=renderedApexDefeats.get(key);renderedApexDefeats.set(key,now);if(last!==undefined&&now-last<5000)return;if(renderedApexDefeats.size>100)renderedApexDefeats.delete(renderedApexDefeats.keys().next().value);
-    const name=match[1].trim().toLowerCase();for(const job of [apex.active,...apex.queue].filter(Boolean)){if(job.dead||job.spawnedAt>Date.now())continue;if([job.name,job.type?.replace(/_/g,' ')].some(n=>String(n).toLowerCase()===name)){job.dead=true;job.killedAt=Date.now();job.defeatSource='Rendered system announcement';job.historyStatus='Defeated';renderApexHistory();}}
+    const name=match[1].trim().toLowerCase();for(const job of [apex.active,...apex.queue].filter(Boolean)){if(job.dead||job.spawnedAt>Date.now())continue;if([job.name,job.type?.replace(/_/g,' ')].some(n=>String(n).toLowerCase()===name))confirmApexAnnouncement(job,'Rendered system announcement');}
   }
   function apexDefeatWaitExpired(job,now=Date.now()){return !!job.defeatWaitStarted&&now-job.defeatWaitStarted>=45000;}
   function observeServerChat(bytes){
@@ -863,9 +911,9 @@
       const sender=str(),html=str();if(sender||o+4!==bytes.length)return; // Player chat cannot start a hunt.
       const text=html.replace(/<[^>]*>/g,'').replace(/&(?:nbsp|amp);/g,' ').trim();
       const match=text.match(/\bApex\s+(.+?)\s+(?:has\s+)?(spawned|has been defeated|been defeated|was defeated|died|killed)/i);if(!match||!loadMobCatalog())return;
-      const type=Object.keys(mobCatalog).find(k=>mobCatalog[k].name.toLowerCase()===match[1].trim().toLowerCase()||k.replace(/_/g,' ')===match[1].trim().toLowerCase());if(!type)return;
+      const found=Object.keys(mobCatalog).find(k=>mobCatalog[k].name.toLowerCase()===match[1].trim().toLowerCase()||k.replace(/_/g,' ')===match[1].trim().toLowerCase());if(!found)return;const type=/^(?:desert_|evil_)?centipede_body$/.test(found)?found.slice(0,-5):found;
       if(match[2]!=='spawned'){
-        for(const job of [apex.active,...apex.queue].filter(Boolean))if(job.type===type&&!job.dead){job.dead=true;job.killedAt=Date.now();job.historyStatus='Defeated';renderApexHistory();}
+        for(const job of [apex.active,...apex.queue].filter(Boolean))if(apexMatchesType(job,type)&&!job.dead)confirmApexAnnouncement(job,'Server system announcement');
         return;
       }
       // The game currently uses #ff00ff for Apex announcements.
@@ -893,12 +941,13 @@
   }
   function seedApexSighting(job){
     if(job.lastBoss||!pos)return;
-    const candidates=[...apexSightings.values()].filter(b=>b.type===job.type&&b.realm===mapFile(job.map)&&b.hp>0&&Date.now()-b.at<15000);
+    const candidates=[...apexSightings.values()].filter(b=>apexMatchesType(job,b.type)&&b.realm===mapFile(job.map)&&b.hp>0&&Date.now()-b.at<15000);
     candidates.sort((a,b)=>b.at-a.at||distance(pos,a)-distance(pos,b));
     if(candidates[0]){job.lastBoss={...candidates[0]};job.entityId=null;job.identityReset=true;job.samples=[];job.trackingSource='Recent sighting; awaiting live confirmation';}
   }
   function observeApexEntities(){
     rememberApexSightings();const job=apex.active,realm=apexObservedRealm();if(!job||job.dead||realm&&realm!==mapFile(job.map)||!loadMobCatalog())return;
+    if(apexSegmented(job)){observeApexSegments(job);return;}
     let tracked=serverWorld.entities.get(job.entityId);const verified=tracked&&!mobCatalogTrusted&&verifiedMobTypes.get(tracked.type);
     if(tracked&&((tracked.kind!==1&&tracked.kind!==6)||tracked.rarity<9||apexMobType(tracked)!==job.type)){job.entityId=null;job.zeroHP=null;job.samples=[];job.standTarget=null;job.hazard=null;job.identityReset=true;tracked=null;}
     if(verified&&verified.type!==job.type){job.entityId=null;job.zeroHP=null;job.lastBoss=null;job.samples=[];job.standTarget=null;job.hazard=null;}
@@ -923,7 +972,7 @@
   }
   async function ensureApexVision(job,token){
     if(job.searchPetal&&job.searchPetalPreset===job.preset)return true;
-    let antennae=-1;try{antennae=Object.keys(JSON.parse(Module.FS.readFile('/data/petals.json',{encoding:'utf8'}))).sort().indexOf('antennae');}catch{}
+    const antennae=runtimePetalCatalog()?.ids.indexOf('antennae')??-1;
     const live=networkLifeTotals&&Date.now()-networkLifeTotals.receivedAt<3000?networkLifeTotals.equipped:null;
     if(antennae>=0&&live){
       if(live.slice(0,10).some(p=>p.type===antennae)){job.searchPetal=true;job.searchPetalPreset=job.preset;job.visionSince=Date.now();job.viewScale=null;return true;}
@@ -1004,7 +1053,8 @@
     if(job&&!job.lastBoss&&missing&&phase==='searching Apex Ultra+ zone'&&Date.now()-(job.searchBeganAt||Date.now())>15000)return true;
     return !records.length&&serverWorld.rejected>20&&(serverWorld.lastFailure||serverWorld.lastReject)?.stage==='world entities';
   }
-  function shouldRejoinApex(job,etaSeconds){const rate=apexDecay(job);if(!job.lastBoss)return true;if(rate===null)return job.lastBoss.hp>.20;const stale=Math.max(0,(Date.now()-job.lastBoss.at)/1000);job.returnETA=etaSeconds;return job.lastBoss.hp-rate*(etaSeconds+stale)>.20;}
+  function apexRecordDeath(job,now=Date.now()){const deaths=(job.deathTimes||[]).filter(at=>now-at<600000);deaths.push(now);job.deathTimes=deaths;return deaths.length<4||now-(job.lastDamageAt||0)<30000;}
+  function shouldRejoinApex(job,etaSeconds){if(apexSegmented(job)&&!job.dead)return true;const rate=apexDecay(job);if(!job.lastBoss)return true;if(rate===null)return job.lastBoss.hp>.20;const stale=Math.max(0,(Date.now()-job.lastBoss.at)/1000);job.returnETA=etaSeconds;return job.lastBoss.hp-rate*(etaSeconds+stale)>.20;}
   function savedPresetKey(number){return 10+(Number(number)+9)%10;}
   async function selectLoadout(number,token){
     if(running&&token===version&&scene()==='play'&&expectedLoadout?.number===number&&networkLifeTotals?.id===expectedLoadout.account&&Date.now()-networkLifeTotals.receivedAt<3000&&loadoutMatches(networkLifeTotals.equipped,networkLifeTotals.savedLoadouts?.[savedPresetKey(number)]||[])){expectedLoadout={number,account:networkLifeTotals.id,slots:networkLifeTotals.equipped.map(p=>({...p})),swaps:[]};lastLoadoutCheck=Date.now();return true;}
@@ -1012,17 +1062,17 @@
       const began=Date.now(),account=networkLifeTotals?.id,preset=networkLifeTotals?.savedLoadouts?.[savedPresetKey(number)];
       if(!await sendLoadout(number,token))return false;
       if(!preset?.length){expectedLoadout=null;return true;}
-      for(let i=0;i<12&&running&&token===version&&scene()==='play';i++){if(networkLifeTotals?.receivedAt>=began&&networkLifeTotals.id===account&&loadoutMatches(networkLifeTotals.equipped,preset)){expectedLoadout={number,account,slots:preset.map(p=>({...p})),swaps:[]};lastLoadoutCheck=Date.now();return true;}await wait(100);}
+      for(let i=0;i<12&&running&&token===version&&scene()==='play';i++){if(networkLifeTotals?.receivedAt>=began&&networkLifeTotals.id===account&&loadoutMatches(networkLifeTotals.equipped,preset)){expectedLoadout={number,account,slots:preset.map(p=>({...p})),swaps:[]};lastLoadoutCheck=Date.now();return true;}await apexLoadoutWait(100,token);}
       if(!running||token!==version||scene()!=='play')return false;
     }
     expectedLoadout=null;loadoutVerification.unconfirmedSelections++;loadoutVerification.warning='L'+number+' sent, but server slot comparison could not confirm it. Continuing without repeated reloads.';status.textContent=loadoutVerification.warning;return running&&token===version&&scene()==='play';
   }
   async function sendLoadout(number,token){
     release();alt('keyup');if(!await liveGate(token)||scene()!=='play')return false;
-    const valid=()=>running&&token===version&&scene()==='play'&&!document.hidden&&document.hasFocus();
-    send('keydown','l');await wait(100);if(!valid()){send('keyup','l');return false;}
-    send('keydown',String(number));await wait(100);send('keyup',String(number));if(!valid()){send('keyup','l');return false;}
-    await wait(60);send('keyup','l');if(!valid())return false;await wait(40);if(valid()&&apex.active){apex.active.searchPetal=false;apex.active.viewScale=null;if(apex.active.preset!==number)apex.active.movementSpeed=300;apex.active.preset=number;}return valid();
+    const valid=()=>running&&token===version&&scene()==='play'&&inputAllowed();
+    send('keydown','l');await apexLoadoutWait(100,token);if(!valid()){send('keyup','l');return false;}
+    send('keydown',String(number));await apexLoadoutWait(100,token);send('keyup',String(number));if(!valid()){send('keyup','l');return false;}
+    await apexLoadoutWait(60,token);send('keyup','l');if(!valid())return false;await apexLoadoutWait(40,token);if(valid()&&apex.active){apex.active.searchPetal=false;apex.active.viewScale=null;if(apex.active.preset!==number)apex.active.movementSpeed=300;apex.active.preset=number;}return valid();
   }
   function mapFile(name){if(name==='Jellyfish zone')return 'ocean';return name.endsWith('Ant Hell')?'ant_hell':name.toLowerCase();}
   function setFarmMap(name,rarity='Ultra+'){
@@ -1042,6 +1092,7 @@
         return true;
       }
       release();if(lastKind!==info.kind){clicked=0;chosen=false;lastKind=info.kind;}
+      if(info.kind==='dead-pending'){apexStatus.textContent='Death confirmed by the server; waiting for the respawn control.';if(Date.now()-clicked>3000){refreshTextCache();frameCache=null;screenCache=null;clicked=Date.now();}await wait(150);continue;}
       if(Date.now()-clicked>1500){
         if(info.kind==='menu'&&!chosen){const p=spawnPoint(info);if(p){await clickPoint(p,token);chosen=true;clicked=Date.now()-1000;}}
         else{await clickPoint(info.button,token);clicked=Date.now();}
@@ -1109,6 +1160,15 @@
       }
     }return best;
   }
+  function apexTerrainExitClear(g,from,to){
+    const a=mapping.toMap(from),b=mapping.toMap(to);if(clearLine(g,a,b))return true;
+    const x=Math.round(a.x),y=Math.round(a.y);if(x<0||y<0||x>=g.W||y>=g.H||g.open[y*g.W+x])return false;
+    let anchor;try{anchor=g.point(g.nearest(a,'Nearby open floor',1.5));}catch{return false;}
+    if(distance(b,anchor)>=distance(a,anchor)-.01)return false;
+    const dx=b.x-a.x,dy=b.y-a.y,n=Math.max(1,Math.ceil(Math.max(Math.abs(dx),Math.abs(dy))*4));let entered=false,last=null;
+    for(let k=0;k<=n;k++){const f=k/n,point={x:a.x+dx*f,y:a.y+dy*f},xx=Math.round(point.x),yy=Math.round(point.y);if(xx<0||yy<0||xx>=g.W||yy>=g.H)return false;const open=!!g.open[yy*g.W+xx];if(!open){if(entered||distance(point,a)>1.5)return false;last=null;continue;}if(last&&xx!==last.x&&yy!==last.y&&(!g.open[last.y*g.W+xx]||!g.open[yy*g.W+last.x]))return false;entered=true;last={x:xx,y:yy};}
+    return true;
+  }
   function apexSafeKeys(job,keys,seconds=.09,speed=300){
     const bosses=apexSafetyBosses(job);if(!bosses.length||!gardenReady)return keys;
     if(!pos||Date.now()-pos.updatedAt>1500)return [];
@@ -1120,7 +1180,7 @@
     const safe=list=>{
       const d=direction(list),len=Math.hypot(d.x,d.y);
       const dx=len?d.x/len*step:0,dy=len?d.y/len*step:0,q={x:p.x+dx,y:p.y+dy};
-      if(len&&!clearLine(g,mapping.toMap(p),mapping.toMap(q)))return false;
+      if(len&&!apexTerrainExitClear(g,p,q))return false;
       const projectiles=apexThreats().filter(e=>e.kind===3&&e.hp>0);
       for(const e of projectiles){const rx=p.x-e.x,ry=p.y-e.y,vx=dx-(e.vx||0)*duration,vy=dy-(e.vy||0)*duration,t=Math.max(0,Math.min(1,-(rx*vx+ry*vy)/(vx*vx+vy*vy||1))),current=Math.hypot(rx,ry),radius=(e.radius||20)+85;
         if(current<radius){if(len&&(rx*dx+ry*dy<0||Math.hypot(rx+dx,ry+dy)<=current))return false;}
@@ -1134,9 +1194,11 @@
       });
     };
     if(safe(keys))return keys;
+    if(keys.length===2){const axes=keys.map(key=>[key]).filter(safe),target=job.standTarget?.world||goal;if(target)axes.sort((a,b)=>{const endpoint=list=>{const d=direction(list);return {x:p.x+d.x*step,y:p.y+d.y*step};};return distance(endpoint(a),target)-distance(endpoint(b),target);});if(axes[0])return axes[0];}
     job.gapBlockedAt=Date.now();
+    const directions=[['d'],['d','s'],['s'],['s','a'],['a'],['a','w'],['w'],['w','d']],mapPoint=mapping.toMap(p),mx=Math.round(mapPoint.x),my=Math.round(mapPoint.y);
+    if(mx>=0&&my>=0&&mx<g.W&&my<g.H&&!g.open[my*g.W+mx]){let anchor;try{anchor=mapping.toWorld(g.point(g.nearest(mapPoint,'Nearby open floor',1.5)));}catch{return [];}const exits=directions.filter(safe).sort((a,b)=>{const end=list=>{const d=direction(list),len=Math.hypot(d.x,d.y);return {x:p.x+d.x/len*step,y:p.y+d.y/len*step};};return distance(end(a),anchor)-distance(end(b),anchor);});if(exits[0]){job.terrainRecoveryAt=Date.now();return exits[0];}}
     if(safe([]))return [];
-    const directions=[['d'],['d','s'],['s'],['s','a'],['a'],['a','w'],['w'],['w','d']];
     const candidates=directions.filter(safe).sort((a,c)=>{
       const score=list=>{const d=direction(list),len=Math.hypot(d.x,d.y);return Math.min(...bosses.map(b=>Math.hypot(p.x+d.x/len*step-b.x,p.y+d.y/len*step-b.y)-apexStandRadius({lastBoss:b})));};return score(c)-score(a);
     });return candidates[0]||[];
@@ -1168,8 +1230,8 @@
         if(job.zoneEntered&&job.preset!==3&&!await selectLoadout(3,token))continue;
         if(!await ensureApexVision(job,token))continue;
         if(apexTargetVisible(job))return true;
-        alt('keyup');send(job.preset===3?'keydown':'keyup',' ');
-        fight.lastBoss=mob;fight.standDistance=(mob.radius||0)+140;const stand=apexStandPoint(fight),name=mobCatalog?.[mobIDs[mob.type]]?.name||'mob';
+        alt('keyup');send('keydown',' ');
+        fight.lastBoss=mob;fight.standDistance=(mob.radius||0)+70;const stand=apexStandPoint(fight),name=mobCatalog?.[mobIDs[mob.type]]?.name||'mob';
         apexStatus.textContent=`Clearing ${name} (${(mob.hp*100).toFixed(1)}% HP) with L${job.preset||2}.`;
         if(!stand||distance(position(),stand.world)<60){hold([]);await wait(100);continue;}
         const next=mapping.toWorld(stand.path[Math.min(1,stand.path.length-1)]),p=position(),keys=[];
@@ -1256,6 +1318,7 @@
           dps=false;arrived=false;searchTargets=null;searchIndex=0;job.zoneEntered=false;job.engagedThisLife=false;tripBegan=Date.now();continue;
         }
         if(scene()!=='play'){
+          if(!job.deathHandled){job.deathHandled=true;if(!apexRecordDeath(job)){job.abandoned=true;job.historyStatus=job.abandonReason='Repeated deaths without recent boss damage; returned to farm';renderApexHistory();return;}}
           release();alt('keyup');dps=false;
           const eta=Math.max(8,(job.travelMs||Date.now()-tripBegan)/1000+8);
           if(shouldRejoinApex(job,eta)){job.defeatWaitStarted=null;phase='Apex respawn';apexStatus.textContent=job.lastBoss?`Respawning: expected Apex HP on return >20% (${Math.round(eta)}s).`:'Respawning to continue searching; Apex HP has not been observed yet.';if(!await apexEnsureSpawn(job,token))return;tripBegan=Date.now();arrived=false;job.zoneEntered=false;job.engagedThisLife=false;}
@@ -1266,17 +1329,20 @@
           release();alt('keyup');phase='waiting for mob updates';const failure=serverWorld.lastFailure;
           apexStatus.textContent='Mob updates are unavailable; holding while the stream recovers'+(failure?.reason?' ('+failure.reason+').':'.');await wait(250);continue;
         }
-        job.defeatWaitStarted=null;if(!await ensureExpectedLoadout(token))continue;if(!await ensureApexVision(job,token))continue;observeApexEntities();
+        job.deathHandled=false;job.defeatWaitStarted=null;if(!await ensureExpectedLoadout(token))continue;if(!await ensureApexVision(job,token))continue;observeApexEntities();
         if(!job.zoneEntered&&apexInUltraZone())job.zoneEntered=true;
         if(job.zoneEntered&&!dps){dps=job.preset===3||await selectLoadout(3,token);if(!dps)continue;if(!await ensureApexVision(job,token))continue;alt('keydown');}
         const boss=apexTargetVisible(job,1800)?job.lastBoss:null;
         if(!boss){
           alt('keyup');if(dps)send('keydown',' ');phase='searching Apex Ultra+ zone';
+          const segmentCleanup=apexSegmentsNeedSweep(job);
+          if(segmentCleanup&&!job.segmentSweep){job.segmentSweep={startedAt:Date.now(),blocked:0};searchTargets=null;searchIndex=0;searchWide=true;}
           const spacing=apexScanWidth(job),oldSpacing=job.searchPlan?.spacing||600;if(!searchTargets||spacing>=oldSpacing*1.3||spacing<oldSpacing*.8){searchTargets=apexSearchTargets(searchWide);searchIndex=0;}
+          if(segmentCleanup&&searchTargets.length&&searchIndex>=searchTargets.length){if(job.segmentSweep.blocked){job.abandoned=true;job.abandonReason='Centipede cleanup floor blocked; remaining segments unconfirmed';return;}job.segmentSweep.completed=true;if(completeApexSegments(job))break;release();await wait(250);continue;}
           if(searchIndex>=searchTargets.length){searchWide=true;searchTargets=apexSearchTargets(true);searchIndex=0;}
           if(!searchTargets.length){release();apexStatus.textContent='No reachable Apex search floor with the current wall margin.';await wait(500);continue;}
-          const canReacquire=job.lastBoss&&Date.now()-job.lastBoss.at<60000&&job.reacquireExhaustedAt!==job.lastBoss.at;
-          let skipped=0;while(!canReacquire&&searchIndex<searchTargets.length&&apexRecentlyScanned(job,searchTargets[searchIndex])&&skipped++<searchTargets.length)searchIndex++;
+          const canReacquire=job.lastBoss?.hp>0&&Date.now()-job.lastBoss.at<60000&&job.reacquireExhaustedAt!==job.lastBoss.at;
+          let skipped=0;while(!segmentCleanup&&!canReacquire&&searchIndex<searchTargets.length&&apexRecentlyScanned(job,searchTargets[searchIndex])&&skipped++<searchTargets.length)searchIndex++;
           if(searchIndex>=searchTargets.length){searchTargets=apexSearchTargets(true);searchWide=true;searchIndex=searchTargets.findIndex(p=>!apexRecentlyScanned(job,p));if(searchIndex<0){searchIndex=searchTargets.length;release();apexStatus.textContent='Nearby search floor was just scanned. Watching for fresh Apex sightings.';await wait(500);continue;}}
           let target=searchTargets[searchIndex%searchTargets.length];
           let reacquiring=false;
@@ -1287,9 +1353,10 @@
           }
           if(!reacquiring){
             apexStatus.textContent=`Searching for ${job.name}: ${searchWide?'Ultra+ first, then wider biome':'Ultra+'} coverage point ${searchIndex%searchTargets.length+1}/${searchTargets.length}.`;
+            if(segmentCleanup)apexStatus.textContent+=' Checking for remaining centipede body segments before looting.';
           }
           if(apexViewCoverage(job)?.centerMayBeBeyondView)apexStatus.textContent+=' · The Apex center may be beyond the current Antennae view at this border gap.';
-          if(await apexNavigate(target,job,token)){if(['world','snapshot'].includes(job.navigateOutcome)){await wait(50);continue;}if(!['found','zone','view','snapshot'].includes(job.navigateOutcome)){if(reacquiring)job.reacquire.index++;else searchIndex++;}searchFailures=0;if(job.zoneEntered&&!arrived){job.zoneTravelMs=Date.now()-tripBegan;arrived=true;}if(job.zoneEntered&&!dps){dps=job.preset===3||await selectLoadout(3,token);if(dps)alt('keydown');}await wait(200);}else{if(scene()==='play'&&++searchFailures>=2){if(reacquiring)job.reacquire.index++;else searchIndex++;searchFailures=0;apexStatus.textContent='Search point blocked. Trying another reachable area.';}await wait(200);}continue;
+          if(await apexNavigate(target,job,token)){if(['world','snapshot'].includes(job.navigateOutcome)){await wait(50);continue;}if(!['found','zone','view','snapshot','screen','stopped'].includes(job.navigateOutcome)){if(reacquiring)job.reacquire.index++;else searchIndex++;}searchFailures=0;if(job.zoneEntered&&!arrived){job.zoneTravelMs=Date.now()-tripBegan;arrived=true;}if(job.zoneEntered&&!dps){dps=job.preset===3||await selectLoadout(3,token);if(dps)alt('keydown');}await wait(200);}else{if(scene()==='play'&&++searchFailures>=2){if(segmentCleanup&&job.segmentSweep)job.segmentSweep.blocked++;if(reacquiring)job.reacquire.index++;else searchIndex++;searchFailures=0;apexStatus.textContent='Search point blocked. Trying another reachable area.';}await wait(200);}continue;
         }
         job.reacquire=null;
         if(!job.engagedThisLife){job.travelMs=Date.now()-tripBegan;job.engagedThisLife=true;}
@@ -1297,7 +1364,8 @@
         if(!await ensureApexVision(job,token))continue;
         phase='Apex DPS';alt('keydown');send('keydown',' ');const rate=apexDecay(job);
         apexStatus.textContent=`${job.name}: ${(boss.hp*100).toFixed(1)}% HP · ${job.trackingSource||'Tracked'} · ${Math.round(distance(position(),boss)-(boss.radius||0))}-unit border gap${rate?' · '+(rate*100).toFixed(2)+'%/s':''}`;
-        if(!job.damageWatch||boss.hp<job.damageWatch.hp-1e-7)job.damageWatch={hp:boss.hp,at:Date.now()};
+        if(apexSegmented(job))apexStatus.textContent+=' · '+[...(job.segments?.values()||[])].filter(s=>s.dead).length+'/'+(job.segments?.size||0)+' observed segments defeated';
+        if(job.damageWatch&&boss.hp<job.damageWatch.hp-1e-7)job.lastDamageAt=Date.now();if(!job.damageWatch||boss.hp<job.damageWatch.hp-1e-7)job.damageWatch={hp:boss.hp,at:Date.now()};
         if(apexHealthGuard())apexStatus.textContent+=' · Low HP: increasing retreat distance until recovered';
         else if(Date.now()-job.damageWatch.at>15000)apexStatus.textContent+=' · No boss HP decrease observed: attack reach/build may be insufficient at this gap';
         const stand=apexStandPoint(job);
@@ -1319,14 +1387,14 @@
       if(!magnetReady&&(!await selectLoadout(3,token)||!await swapTravelLoadout(token,['2'])))return;lootStarted=Date.now();
       while(running&&token===version&&Date.now()-lootStarted<45000&&Date.now()<job.lootDeadline){
         if(scene()!=='play'){if(!await apexEnsureSpawn(job,token))return;if(kill)await apexNavigate(kill,job,token,true);if(!await selectLoadout(3,token)||!await swapTravelLoadout(token,['2']))continue;}
-        const drops=[...serverWorld.entities.values()].filter(e=>e.kind===4&&kill&&Math.hypot(e.x-kill.x,e.y-kill.y)<1200).sort((a,b)=>distance(pos,a)-distance(pos,b));
+        const sites=job.segmentCorpses?.length?job.segmentCorpses:kill?[kill]:[],drops=[...serverWorld.entities.values()].filter(e=>e.kind===4&&sites.some(site=>distance(e,site)<1200)).sort((a,b)=>distance(pos,a)-distance(pos,b));
         if(!drops.length){await wait(800);if(Date.now()-lootStarted>2500)break;continue;}
         await apexNavigate(drops[0],job,token,true);await wait(150);
       }
       if(!running||token!==version)return;
       updateApexLoot(job,networkLifeTotals);job.historyStatus=job.lootGains?.length?'Looted':'Loot visit complete; no inventory gains confirmed';renderApexHistory();apex.completed++;apexStatus.textContent=`Apex ${job.name} complete. Returning to ${saved.map}.`;
     }finally{
-      if(!job.historyStatus?.startsWith('Loot')||job.historyStatus==='Looting'){job.historyStatus=job.abandoned?'Unconfirmed defeat: returned to farm':'Interrupted';renderApexHistory();}
+      if(!job.historyStatus?.startsWith('Loot')||job.historyStatus==='Looting'){job.historyStatus=job.abandoned?(job.abandonReason||'Unconfirmed defeat: returned to farm'):'Interrupted';renderApexHistory();}
       if(token===version){release();alt('keyup');}if(apex.active===job)apex.active=null;
       if(running&&token===version){
         if(scene()==='play')await selectLoadout(farmPreset(saved.map),token);if(!running||token!==version)return;setFarmMap(saved.map,saved.rarity);
@@ -1408,7 +1476,7 @@
     phase='travel swap';if(!await prepareTravelLoadout(token))throw new Error('SCREEN');return true;
   }
   async function start(farming){
-    if(running||capturing)return;const recovering=autoRecovery.enabled;stop('Starting.',recovering);autoRecovery.enabled=!!farming;if(!recovering)autoRecovery.attempts=[];autoRecovery.lastProgress=Date.now();autoRecovery.point=null;autoRecovery.phase=null;running=true;const token=++version;root.activeElement?.blur();teaching=false;saveSettings();
+    if(running||capturing)return;const recovering=autoRecovery.enabled;stop('Starting.',recovering);autoRecovery.enabled=!!farming;if(!recovering)autoRecovery.attempts=[];autoRecovery.lastProgress=Date.now();autoRecovery.point=null;autoRecovery.phase=null;running=true;const token=++version;autoRecovery.loopToken=token;autoRecovery.hasStarted=true;root.activeElement?.blur();teaching=false;saveSettings();
     let booted=false,area=null,points=null,stage='entry',corner=0,swappedBack=false,lastClick=0,spawnChosen=false,lastScreen='',recoveries=0;
     try{
       while(running&&token===version){
@@ -1465,7 +1533,7 @@
         }else if(stage==='center')stage='patrol';else corner=(corner+1)%points.corners.length;
         await wait(180);
       }
-    }catch(error){if(token===version){if(!farming||!scheduleRecovery(error.message))stop(error.message);}}finally{if(token===version)release();}
+    }catch(error){if(token===version){if(!farming||!scheduleRecovery(error.message))stop(error.message);}}finally{if(autoRecovery.loopToken===token)autoRecovery.loopToken=null;if(token===version){release();if(farming&&autoRecovery.enabled&&!autoRecovery.pending)scheduleRecovery('Farming loop ended unexpectedly');}}
   }
   function go(){return start(false);}
   function button(parent,text,action){const b=element('button','',text,parent);b.onclick=action;}
@@ -1528,7 +1596,7 @@
   }
   const names=['keydown','keyup','keypress','pointerdown','pointermove','pointerup','pointercancel','mousedown','mousemove','mouseup','click','touchstart','touchmove','touchend','touchcancel','wheel'];
   for(const name of names)window.addEventListener(name,events,{capture:true,passive:false});
-  function blur(){drag=null;panelPress=null;release();alt('keyup');if(running)status.textContent='Paused while the game is not focused.';}
+  function blur(){drag=null;panelPress=null;release();alt('keyup');if(running)status.textContent=inputAllowed()?'Automatic farming continues in background.':'Paused while the game is not focused.';}
   function visibility(){if(document.hidden){release();alt('keyup');}}
   window.addEventListener('blur',blur);document.addEventListener('visibilitychange',visibility);
     // The offline build exposes its read-only bundled assets through Emscripten FS.
@@ -1977,6 +2045,7 @@
       serverWorld.own=own;pos={x:own.x,y:own.y,updatedAt:own.at};window.flowrixPosition=pos;if(networkLifeTotals&&Number.isFinite(own.xp))networkLifeTotals={...networkLifeTotals,xp:own.xp};
       if(!frame){serverWorld.rejected++;serverWorld.lastFailure=serverWorld.lastReject;return;}serverWorld.frames++;serverWorld.protocol=own.protocol;serverWorld.entityProtocol=frame.entityProtocol;serverWorld.entityProtocolConfirmed=serverWorld.entityProtocolConfirmed||frame.entityProtocolConfirmed;serverWorld.updatedAt=own.at;
       for(const [id,e] of frame.changes)serverWorld.entities.set(id,e);
+      if(apexSegmented(apex.active))for(const id of frame.removed){const e=frame.changes.get(id);if(e?.hp===0)apexRecordSegment(apex.active,e,own.at);}
       const hunted=apex.active,removedBoss=hunted&&frame.removed.includes(hunted.entityId)?frame.changes.get(hunted.entityId):null;if(removedBoss&&removedBoss.hp===0&&(removedBoss.kind===1||removedBoss.kind===6)&&removedBoss.rarity>=9&&apexMobType(removedBoss)===hunted.type){hunted.zeroHP={id:removedBoss.id,at:own.at};hunted.lastBoss={...hunted.lastBoss,x:removedBoss.x,y:removedBoss.y,radius:removedBoss.radius,hp:0,id:removedBoss.id,at:own.at};}
       for(const id of frame.removed)serverWorld.entities.delete(id);
       observeApexEntities();apexRecordCoverage(apex.active);return;
@@ -2051,11 +2120,11 @@
       for(const p of samples){vc.fillStyle='#ffdd00';vc.fillRect(p.map.x-1,p.map.y-1,3,3);}
       if(mapping&&pos){const p=mapping.toMap(pos);vc.strokeStyle='#00ff00';vc.beginPath();vc.moveTo(p.x-4,p.y);vc.lineTo(p.x+4,p.y);vc.moveTo(p.x,p.y-4);vc.lineTo(p.x,p.y+4);vc.stroke();}
       if(mapping&&goal){const p=mapping.toMap(goal);vc.strokeStyle='#ff3333';vc.beginPath();vc.arc(p.x,p.y,3,0,Math.PI*2);vc.stroke();}
-    }catch(error){if(running&&!scheduleRecovery(error.message))stop(error.message);}
+    }catch(error){if(autoRecovery.renderError!==error.message){autoRecovery.renderError=error.message;recoveryEvent('Map preview unavailable: '+error.message);}}
   },150);
   const recoveryTimer=setInterval(()=>{const reason=recoveryReason();if(reason)scheduleRecovery(reason);},2500);
   loadSettings();
   visualRAF=requestAnimationFrame(visualFrame);refreshTextCache();
   mobCatalogRefresh=refreshPublicMobCatalog();
-  window.flowrixNav={stop,apexHistory:()=>apexHistory.map(j=>({name:j.name,map:j.map,spawnedAt:j.spawnedAt,status:j.historyStatus||'Queued',loot:j.lootGains||[]})),statsDiagnostics,apexDiagnostics,state:()=>({loadoutVerification:{...loadoutVerification},recovery:{enabled:autoRecovery.enabled,pending:!!autoRecovery.pending,attempts:autoRecovery.attempts.length,lastReason:autoRecovery.lastReason},apex:{active:apex.active?{name:apex.active.name,map:apex.active.map,hp:apex.active.lastBoss?.hp,dead:apex.active.dead,entityId:apex.active.entityId,borderGap:apex.active.lastBoss&&pos?distance(pos,apex.active.lastBoss)-(apex.active.lastBoss.radius||0):null,targetBorderGap:apexGap(),lastSeenMs:apex.active.lastBoss?Date.now()-apex.active.lastBoss.at:null}:null,queued:apex.queue.map(j=>({name:j.name,map:j.map})),completed:apex.completed,lastError:apex.lastError},networkWorld:{frames:serverWorld.frames,rejected:serverWorld.rejected,entities:serverWorld.entities.size,realm:serverWorld.realm},position:pos,phase,running,garden:gardenReady&&gardenData?.name==='Garden',map:gardenData?.name,directMap:gardenReady,family:gardenData?.family,familyBands:gardenData?.familyBands,realm:liveRealm?.id,realmScore:realmShapeCache?.score,life:{current:currentLife?{number:currentLife.number,startedAt:currentLife.startedAt,kills:currentLife.kills,xp:currentLife.xp}:null,past:pastLives.map(v=>({...v}))},route:route.slice(),goal,patrol:patrolPreview,blocks:temporaryBlocks.size,texts:[...textPoints]}),destroy(){visualEnabled=false;cancelAnimationFrame(visualRAF);stop();clearInterval(timer);clearInterval(lifeTimer);clearInterval(recoveryTimer);lifeNetworkHook?.detach();lifeMedia.removeEventListener('change',layoutLifePanel);removeOverlay();host.remove();for(const name of names)window.removeEventListener(name,events,true);window.removeEventListener('blur',blur);document.removeEventListener('visibilitychange',visibility);for(const h of hooks)if(h.proto[h.name]===h.wrapped)h.proto[h.name]=h.original;}};
+  window.flowrixNav={stop,apexHistory:()=>apexHistory.map(j=>({name:j.name,map:j.map,spawnedAt:j.spawnedAt,status:j.historyStatus||'Queued',loot:j.lootGains||[]})),statsDiagnostics,apexDiagnostics,state:()=>({loadoutVerification:{...loadoutVerification},recovery:{enabled:autoRecovery.enabled,pending:!!autoRecovery.pending,attempts:autoRecovery.attempts.length,lastReason:autoRecovery.lastReason,nextRetryAt:autoRecovery.nextRetryAt,background:backgroundFarm.checked,events:autoRecovery.events.map(e=>({...e}))},apex:{active:apex.active?{name:apex.active.name,map:apex.active.map,hp:apex.active.lastBoss?.hp,dead:apex.active.dead,entityId:apex.active.entityId,borderGap:apex.active.lastBoss&&pos?distance(pos,apex.active.lastBoss)-(apex.active.lastBoss.radius||0):null,targetBorderGap:apexGap(),lastSeenMs:apex.active.lastBoss?Date.now()-apex.active.lastBoss.at:null}:null,queued:apex.queue.map(j=>({name:j.name,map:j.map})),completed:apex.completed,lastError:apex.lastError},networkWorld:{frames:serverWorld.frames,rejected:serverWorld.rejected,entities:serverWorld.entities.size,realm:serverWorld.realm},position:pos,phase,running,garden:gardenReady&&gardenData?.name==='Garden',map:gardenData?.name,directMap:gardenReady,family:gardenData?.family,familyBands:gardenData?.familyBands,realm:liveRealm?.id,realmScore:realmShapeCache?.score,life:{current:currentLife?{number:currentLife.number,startedAt:currentLife.startedAt,kills:currentLife.kills,xp:currentLife.xp}:null,past:pastLives.map(v=>({...v}))},route:route.slice(),goal,patrol:patrolPreview,blocks:temporaryBlocks.size,texts:[...textPoints]}),destroy(){visualEnabled=false;cancelAnimationFrame(visualRAF);stop();clearInterval(timer);clearInterval(lifeTimer);clearInterval(recoveryTimer);lifeNetworkHook?.detach();lifeMedia.removeEventListener('change',layoutLifePanel);removeOverlay();host.remove();for(const name of names)window.removeEventListener(name,events,true);window.removeEventListener('blur',blur);document.removeEventListener('visibilitychange',visibility);for(const h of hooks)if(h.proto[h.name]===h.wrapped)h.proto[h.name]=h.original;}};
 })();

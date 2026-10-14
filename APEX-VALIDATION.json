@@ -101,5 +101,145 @@
   "compactUpdateRegression": {
     "flagCombinations": 128,
     "liveServerTest": false
+  },
+  "extendedNormalDamageTrials": {
+    "asOf": "2026-10-14T20:13:14.873733+00:00",
+    "cases": [
+      {
+        "case": "confirmed2-Desert-scorpion",
+        "protocol": "native",
+        "sourceSha256": "bc183e9c359943f577271e1351d808b8c13fca533d3f4907c5afe64a33909d24",
+        "timedMinutes": 10.054633333333333,
+        "freshLivingAtStart": true,
+        "setupOnlyGodMode": true,
+        "godOffBeforeTiming": true,
+        "wildMobsUnchanged": true,
+        "npcClearing": false,
+        "observedDeathsDuringWindow": 43,
+        "dpsSamples": 2,
+        "antennaeType3ActiveInEveryObservedDpsSample": false,
+        "maximumMovementBetweenConsecutiveDpsSamplesUnits": null,
+        "apexCompletions": 0,
+        "worldAccepted": 10924,
+        "worldRejected": 187,
+        "conversion": null,
+        "history": [
+          {
+            "name": "Scorpion",
+            "map": "Desert",
+            "spawnedAt": 1791970417521,
+            "status": "Hunting",
+            "loot": []
+          }
+        ],
+        "stillRunning": false,
+        "artifact": "trials-20261014-confirmed2-Desert-scorpion-result.json",
+        "limits": [
+          "Offline native physics; disposable admin-provisioned approximate DPS inventory; no live-server validation.",
+          "Initial native quantized boss HP sometimes jumps upward after fresh deltas; excluded from damage claims.",
+          "Some cases spend most of their timed window back in ordinary farming after a hunt is abandoned."
+        ]
+      },
+      {
+        "case": "ant-public-Normal-Ant-Hell-worker_ant",
+        "protocol": "public-transcoded",
+        "sourceSha256": "dc54f33668a2b2e407c593ea826b3d428b60b6cd5ae2569e00b9b94cc0a50c14",
+        "timedMinutes": 12.063283333333333,
+        "freshLivingAtStart": true,
+        "setupOnlyGodMode": true,
+        "godOffBeforeTiming": true,
+        "wildMobsUnchanged": true,
+        "npcClearing": false,
+        "observedDeathsDuringWindow": 24,
+        "dpsSamples": 4,
+        "antennaeType3ActiveInEveryObservedDpsSample": true,
+        "maximumMovementBetweenConsecutiveDpsSamplesUnits": 1211.573888239619,
+        "apexCompletions": 0,
+        "worldAccepted": 13581,
+        "worldRejected": 0,
+        "conversion": {
+          "frames": 13581,
+          "failures": 0,
+          "mixedCompact": 97510
+        },
+        "history": [
+          {
+            "name": "Worker Ant",
+            "map": "Normal Ant Hell",
+            "spawnedAt": 1791971172370,
+            "status": "Repeated deaths without recent boss damage; returned to farm",
+            "loot": []
+          }
+        ],
+        "stillRunning": false,
+        "artifact": "trials-20261014-ant-public-Normal-Ant-Hell-worker_ant-result.json",
+        "limits": [
+          "Offline native physics; disposable admin-provisioned approximate DPS inventory; no live-server validation.",
+          "Initial native quantized boss HP sometimes jumps upward after fresh deltas; excluded from damage claims.",
+          "Some cases spend most of their timed window back in ordinary farming after a hunt is abandoned."
+        ]
+      },
+      {
+        "case": "garden-native-Garden-ladybug",
+        "protocol": "native",
+        "sourceSha256": "dc54f33668a2b2e407c593ea826b3d428b60b6cd5ae2569e00b9b94cc0a50c14",
+        "timedMinutes": 12.0542,
+        "freshLivingAtStart": false,
+        "setupOnlyGodMode": true,
+        "godOffBeforeTiming": true,
+        "wildMobsUnchanged": true,
+        "npcClearing": false,
+        "observedDeathsDuringWindow": 41,
+        "dpsSamples": 0,
+        "antennaeType3ActiveInEveryObservedDpsSample": null,
+        "maximumMovementBetweenConsecutiveDpsSamplesUnits": null,
+        "apexCompletions": 0,
+        "worldAccepted": 12958,
+        "worldRejected": 0,
+        "conversion": null,
+        "history": [
+          {
+            "name": "Ladybug",
+            "map": "Garden",
+            "spawnedAt": 1791971180609,
+            "status": "Repeated deaths without recent boss damage; returned to farm",
+            "loot": []
+          }
+        ],
+        "stillRunning": false,
+        "artifact": "trials-20261014-garden-native-Garden-ladybug-result.json",
+        "limits": [
+          "Offline native physics; disposable admin-provisioned approximate DPS inventory; no live-server validation.",
+          "Initial native quantized boss HP sometimes jumps upward after fresh deltas; excluded from damage claims.",
+          "Some cases spend most of their timed window back in ordinary farming after a hunt is abandoned."
+        ]
+      }
+    ],
+    "validPlacementTimedMinutes": 22.117916666666666,
+    "allTimedNativeMinutes": 34.17211666666667,
+    "apexKillOrLootConfirmed": false
+  },
+  "latestRegression": {
+    "date": "2026-10-14",
+    "command": "npm test",
+    "passed": 51,
+    "failed": 0,
+    "skipped": 0,
+    "sourceSha256": "0c82bab5676900c430336a0fba1c9b9d9d8de2c1f1737a4a2a0df584b97b16fc",
+    "liveServerTest": false,
+    "normalDamageSurvivalEstablished": false,
+    "centipedeLiveKillConfirmed": false,
+    "includes": [
+      "Generated mob-egg petal IDs",
+      "Retreat checks during build changes",
+      "Wall-edge and safe-axis recovery",
+      "Fresh-HP death handoff",
+      "Repeated-death return to farm",
+      "Unattended background input",
+      "Cooldown recovery and manual cancellation",
+      "Unexpected loop exit recovery",
+      "All three Apex centipede head/body/tail handoffs",
+      "Fresh centipede cleanup sweep before loot"
+    ]
   }
 }
