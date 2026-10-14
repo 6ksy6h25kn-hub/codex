@@ -852,7 +852,7 @@
   function observeRenderedApexDefeat(text,ctx){
     const match=String(text).trim().match(/^A(?:n)?\s+Apex\s+(.+?)\s+has\s+been\s+defeated\b/i);if(!match)return;
     const color=String(ctx?.fillStyle||''),hex=color.match(/^#([0-9a-f]{6})$/i);if(!hex)return;const c=parseInt(hex[1],16),r=c>>16,g=c>>8&255,b=c&255;if(r<90||b<110||g>Math.min(r,b)*.8)return;
-    const key=String(text).trim().toLowerCase();if(renderedApexDefeats.has(key))return;renderedApexDefeats.set(key,Date.now());if(renderedApexDefeats.size>100)renderedApexDefeats.delete(renderedApexDefeats.keys().next().value);
+    const key=String(text).trim().toLowerCase(),now=Date.now(),last=renderedApexDefeats.get(key);renderedApexDefeats.set(key,now);if(last!==undefined&&now-last<5000)return;if(renderedApexDefeats.size>100)renderedApexDefeats.delete(renderedApexDefeats.keys().next().value);
     const name=match[1].trim().toLowerCase();for(const job of [apex.active,...apex.queue].filter(Boolean)){if(job.dead||job.spawnedAt>Date.now())continue;if([job.name,job.type?.replace(/_/g,' ')].some(n=>String(n).toLowerCase()===name)){job.dead=true;job.killedAt=Date.now();job.defeatSource='Rendered system announcement';job.historyStatus='Defeated';renderApexHistory();}}
   }
   function apexDefeatWaitExpired(job,now=Date.now()){return !!job.defeatWaitStarted&&now-job.defeatWaitStarted>=45000;}
@@ -887,7 +887,7 @@
       if((e.kind!==1&&e.kind!==6)||e.rarity<9||!type||!Number.isFinite(e.x)||!Number.isFinite(e.y)||!Number.isFinite(e.radius))continue;
       const key=realm+':'+type+':'+e.id;
       if(e.hp<=0){apexSightings.delete(key);continue;}
-      apexSightings.set(key,{type,realm,id:e.id,x:e.x,y:e.y,radius:e.radius,hp:e.hp,vx:e.vx||0,vy:e.vy||0,at:serverWorld.updatedAt});
+      apexSightings.set(key,{type,realm,id:e.id,x:e.x,y:e.y,radius:e.radius,hp:e.hp,vx:e.vx||0,vy:e.vy||0,poseAt:e.poseAt??e.at??serverWorld.updatedAt,at:serverWorld.updatedAt});
     }
     while(apexSightings.size>128)apexSightings.delete(apexSightings.keys().next().value);
   }
@@ -899,16 +899,17 @@
   }
   function observeApexEntities(){
     rememberApexSightings();const job=apex.active,realm=apexObservedRealm();if(!job||job.dead||realm&&realm!==mapFile(job.map)||!loadMobCatalog())return;
-    const tracked=serverWorld.entities.get(job.entityId),verified=tracked&&!mobCatalogTrusted&&verifiedMobTypes.get(tracked.type);
+    let tracked=serverWorld.entities.get(job.entityId);const verified=tracked&&!mobCatalogTrusted&&verifiedMobTypes.get(tracked.type);
+    if(tracked&&((tracked.kind!==1&&tracked.kind!==6)||tracked.rarity<9||apexMobType(tracked)!==job.type)){job.entityId=null;job.zeroHP=null;job.samples=[];job.standTarget=null;job.hazard=null;job.identityReset=true;tracked=null;}
     if(verified&&verified.type!==job.type){job.entityId=null;job.zeroHP=null;job.lastBoss=null;job.samples=[];job.standTarget=null;job.hazard=null;}
     if(tracked&&(tracked.kind===1||tracked.kind===6)&&tracked.rarity>=9&&(verified?.type||mobIDs[tracked.type])===job.type&&tracked.hp===0&&Date.now()-serverWorld.updatedAt<1500){if(job.zeroHP?.id!==tracked.id)job.zeroHP={id:tracked.id,at:serverWorld.updatedAt};if(serverWorld.updatedAt-job.zeroHP.at>=350){job.dead=true;job.killedAt=Date.now();job.lastBoss={...job.lastBoss,x:tracked.x,y:tracked.y,radius:tracked.radius,hp:0,at:serverWorld.updatedAt,id:tracked.id};}return;}if(tracked?.hp>0)job.zeroHP=null;
     const candidates=[...serverWorld.entities.values()].filter(e=>(e.kind===1||e.kind===6)&&apexMobType(e)===job.type&&e.rarity>=9&&Number.isFinite(e.hp)&&e.hp>0&&Number.isFinite(e.x)&&Number.isFinite(e.y));
     let boss=job.entityId!=null?candidates.find(e=>e.id===job.entityId):candidates.sort((a,b)=>b.radius-a.radius)[0];
     if(!boss&&!tracked&&job.lastBoss?.at>0&&Date.now()-serverWorld.updatedAt<1500&&Date.now()-job.lastBoss.at>2000){
       const age=Math.min(10,(Date.now()-job.lastBoss.at)/1000),limit=Math.max(2000,Math.hypot(job.lastBoss.vx||0,job.lastBoss.vy||0)*age+1000);
-      boss=candidates.filter(e=>distance(e,job.lastBoss)<=limit&&e.hp<=job.lastBoss.hp+.03&&Math.abs(e.radius-job.lastBoss.radius)<=Math.max(50,job.lastBoss.radius*.25)).sort((a,b)=>distance(a,job.lastBoss)-distance(b,job.lastBoss))[0];
+      boss=candidates.filter(e=>distance(e,job.lastBoss)<=limit&&e.hp<=job.lastBoss.hp+.03&&Math.abs(e.radius-job.lastBoss.radius)<=Math.max(50,job.lastBoss.radius*.25)).sort((a,b)=>distance(a,job.lastBoss)-distance(b,job.lastBoss))[0];if(!boss&&candidates.length===1)boss=candidates[0];
     }
-    if(!boss)return;if(job.entityId!==boss.id){job.zeroHP=null;job.samples=[];job.standTarget=null;job.hazard=null;}job.trackingSource=mobCatalogTrusted?'Current game registry':verifiedMobTypes.has(boss.type)?'Screen-confirmed name':'Catalog ID';job.entityId=boss.id;job.identityReset=false;job.lastBoss={x:boss.x,y:boss.y,hp:boss.hp,radius:boss.radius,vx:boss.vx||0,vy:boss.vy||0,angle:boss.angle,at:serverWorld.updatedAt,id:boss.id};
+    if(!boss){if(!tracked&&job.zeroHP?.id===job.entityId&&!job.identityReset&&Date.now()-serverWorld.updatedAt<1500&&serverWorld.updatedAt-job.zeroHP.at>=350){job.dead=true;job.killedAt=Date.now();job.historyStatus='Defeated';job.lastBoss={...job.lastBoss,hp:0};renderApexHistory();}return;}if(job.entityId!==boss.id){job.zeroHP=null;job.samples=[];job.standTarget=null;job.hazard=null;}job.trackingSource=mobCatalogTrusted?'Current game registry':verifiedMobTypes.has(boss.type)?'Screen-confirmed name':'Catalog ID';job.entityId=boss.id;job.identityReset=false;job.lastBoss={x:boss.x,y:boss.y,hp:boss.hp,radius:boss.radius,vx:boss.vx||0,vy:boss.vy||0,angle:boss.angle,poseAt:boss.poseAt??boss.at??serverWorld.updatedAt,at:serverWorld.updatedAt,id:boss.id};
     const observedAt=serverWorld.updatedAt||Date.now();
     if(job.samples.length&&boss.hp>job.samples.at(-1).hp+.02)job.samples=[];
     if(!job.samples.length||observedAt-job.samples.at(-1).at>700){job.samples.push({hp:boss.hp,at:observedAt});job.samples=job.samples.filter(s=>Date.now()-s.at<30000).slice(-40);}
@@ -922,6 +923,12 @@
   }
   async function ensureApexVision(job,token){
     if(job.searchPetal&&job.searchPetalPreset===job.preset)return true;
+    let antennae=-1;try{antennae=Object.keys(JSON.parse(Module.FS.readFile('/data/petals.json',{encoding:'utf8'}))).sort().indexOf('antennae');}catch{}
+    const live=networkLifeTotals&&Date.now()-networkLifeTotals.receivedAt<3000?networkLifeTotals.equipped:null;
+    if(antennae>=0&&live){
+      if(live.slice(0,10).some(p=>p.type===antennae)){job.searchPetal=true;job.searchPetalPreset=job.preset;job.visionSince=Date.now();job.viewScale=null;return true;}
+      if(live[10]?.type!==antennae){job.searchPetal=false;job.searchPetalPreset=job.preset;job.viewScale=null;job.visionWarning='Antennae is not equipped or in reserve slot 1; continuing the route with the normal view.';return true;}
+    }
     if(!await swapTravelLoadout(token,['1']))return false;
     job.searchPetal=true;job.searchPetalPreset=job.preset;job.visionSince=Date.now();job.viewScale=null;return true;
   }
@@ -977,19 +984,19 @@
   }
   function apexReacquireTargets(job){
     const b=job.lastBoss,bearing=Math.atan2(pos.y-b.y,pos.x-b.x),offset=apexStandRadius(job)+Math.hypot(gardenData.worldW,gardenData.worldH)/gardenData.size,targets=[];
-    const age=Math.min(1.2,Math.max(0,(Date.now()-b.at)/1000)),speed=Math.hypot(b.vx||0,b.vy||0),factor=speed?Math.min(age,1000/speed):0,predicted={x:b.x+(b.vx||0)*factor,y:b.y+(b.vy||0)*factor};
+    const age=Math.min(1.2,Math.max(0,(Date.now()-b.at)/1000)),speed=apexMotionFresh(b)?Math.hypot(b.vx||0,b.vy||0):0,factor=speed?Math.min(age,1000/speed):0,predicted={x:b.x+(b.vx||0)*factor,y:b.y+(b.vy||0)*factor};
     const centers=speed>50?[predicted,b]:[b];
     for(const center of centers)for(const turn of [0,1,-1,2,-2,3,-3,4,-4,5,-5,6,-6,7,-7,8]){const angle=bearing+turn*Math.PI/8;targets.push({x:center.x+Math.cos(angle)*offset,y:center.y+Math.sin(angle)*offset});}
-    try{const g=grid(apexSafetyMask(job)),reachable=search(g,mapping.toMap(position())),used=new Set(),candidates=[];for(const wanted of targets){try{const cell=g.nearest(mapping.toMap(wanted),'Apex reacquisition point',8),world=mapping.toWorld(g.point(cell));if(used.has(cell)||reachable.steps[cell]<0||distance(world,b)<apexStandRadius(job))continue;used.add(cell);candidates.push({world,priority:0});}catch{}}return apexOrderTargets(g,reachable.source,candidates);}catch{return targets;}
+    try{const g=grid(apexSafetyMask(job)),reachable=search(g,mapping.toMap(position())),used=new Set(),candidates=[];for(const wanted of targets){try{const cell=g.nearest(mapping.toMap(wanted),'Apex reacquisition point',8),world=mapping.toWorld(g.point(cell));if(used.has(cell)||reachable.steps[cell]<0||distance(world,b)<apexStandRadius(job)||distance(world,position())<Math.max(120,Math.hypot(gardenData.worldW,gardenData.worldH)/gardenData.size))continue;used.add(cell);candidates.push({world,priority:0});}catch{}}return apexOrderTargets(g,reachable.source,candidates);}catch{return targets;}
   }
   function apexRecordCoverage(job){
     if(!job||job.dead||phase!=='searching Apex Ultra+ zone'||!pos||Date.now()-serverWorld.updatedAt>1000||serverWorld.realm&&serverWorld.realm!==mapFile(job.map))return;
-    const seen=job.coverageSeen||(job.coverageSeen=new Map()),now=Date.now(),width=600,bx=Math.floor(pos.x/width),by=Math.floor(pos.y/width),view=job.viewScale,radius=view&&now-view.at<3000?Math.max(400,Math.min(2500,Math.min(game.width,game.height)/view.scale*.3)):400,extent=Math.ceil(radius/width);
-    for(let y=by-extent;y<=by+extent;y++)for(let x=bx-extent;x<=bx+extent;x++)if(Math.hypot(pos.x-(x+.5)*width,pos.y-(y+.5)*width)<radius)seen.set(x+':'+y,now);
-    if(seen.size>4000)for(const [key,at] of seen)if(now-at>60000)seen.delete(key);
+    const now=Date.now(),view=job.viewScale,radius=view&&now-view.at<3000?Math.min(2500,Math.min(game.width,game.height)/view.scale*.25):300,views=job.coverageViews||(job.coverageViews=[]),last=views.at(-1);
+    if(last&&now-last.at<500&&distance(pos,last)<150)return;
+    views.push({x:pos.x,y:pos.y,radius,at:now});job.coverageViews=views.filter(v=>now-v.at<30000).slice(-256);
   }
-  function apexRecentlyScanned(job,target){return Date.now()-(job.coverageSeen?.get(Math.floor(target.x/600)+':'+Math.floor(target.y/600))||0)<30000;}
-  function apexWorldStale(){return serverWorld.rejected>20&&Date.now()-serverWorld.updatedAt>2000;}
+  function apexRecentlyScanned(job,target){const now=Date.now();return !!job.coverageViews?.some(v=>now-v.at<30000&&distance(target,v)<=v.radius);}
+  function apexWorldStale(){return serverWorld.updatedAt>0&&Date.now()-serverWorld.updatedAt>2000;}
   function apexNeedsWorldRefresh(){
     const records=[...serverWorld.entities.values()],complete=e=>(e.kind===1||e.kind===6)&&Number.isFinite(e.type)&&Number.isFinite(e.rarity),job=apex.active;
     const missing=records.filter(e=>e.kind<0||(e.kind===1||e.kind===6)&&!Number.isFinite(e.type)).length,badRate=serverWorld.rejected>20&&serverWorld.rejected/(serverWorld.frames+serverWorld.rejected)>.1;
@@ -998,10 +1005,11 @@
     return !records.length&&serverWorld.rejected>20&&(serverWorld.lastFailure||serverWorld.lastReject)?.stage==='world entities';
   }
   function shouldRejoinApex(job,etaSeconds){const rate=apexDecay(job);if(!job.lastBoss)return true;if(rate===null)return job.lastBoss.hp>.20;const stale=Math.max(0,(Date.now()-job.lastBoss.at)/1000);job.returnETA=etaSeconds;return job.lastBoss.hp-rate*(etaSeconds+stale)>.20;}
+  function savedPresetKey(number){return 10+(Number(number)+9)%10;}
   async function selectLoadout(number,token){
-    if(running&&token===version&&scene()==='play'&&expectedLoadout?.number===number&&networkLifeTotals?.id===expectedLoadout.account&&Date.now()-networkLifeTotals.receivedAt<3000&&loadoutMatches(networkLifeTotals.equipped,networkLifeTotals.savedLoadouts?.[number]||[])){expectedLoadout={number,account:networkLifeTotals.id,slots:networkLifeTotals.equipped.map(p=>({...p})),swaps:[]};lastLoadoutCheck=Date.now();return true;}
+    if(running&&token===version&&scene()==='play'&&expectedLoadout?.number===number&&networkLifeTotals?.id===expectedLoadout.account&&Date.now()-networkLifeTotals.receivedAt<3000&&loadoutMatches(networkLifeTotals.equipped,networkLifeTotals.savedLoadouts?.[savedPresetKey(number)]||[])){expectedLoadout={number,account:networkLifeTotals.id,slots:networkLifeTotals.equipped.map(p=>({...p})),swaps:[]};lastLoadoutCheck=Date.now();return true;}
     for(let attempt=0;attempt<3;attempt++){
-      const began=Date.now(),account=networkLifeTotals?.id,preset=networkLifeTotals?.savedLoadouts?.[number];
+      const began=Date.now(),account=networkLifeTotals?.id,preset=networkLifeTotals?.savedLoadouts?.[savedPresetKey(number)];
       if(!await sendLoadout(number,token))return false;
       if(!preset?.length){expectedLoadout=null;return true;}
       for(let i=0;i<12&&running&&token===version&&scene()==='play';i++){if(networkLifeTotals?.receivedAt>=began&&networkLifeTotals.id===account&&loadoutMatches(networkLifeTotals.equipped,preset)){expectedLoadout={number,account,slots:preset.map(p=>({...p})),swaps:[]};lastLoadoutCheck=Date.now();return true;}await wait(100);}
@@ -1059,8 +1067,9 @@
     const fraction=own.hp/own.maxHP;if(fraction<=.45)job.healthRetreat=true;else if(fraction>=.7)job.healthRetreat=false;
     return job.healthRetreat?240:0;
   }
+  function apexMotionFresh(b){return Date.now()-(b.poseAt??b.at??0)<500;}
   function apexStandRadius(job){
-    const b=job.lastBoss,moving=Date.now()-b.at<1500;
+    const b=job.lastBoss,moving=apexMotionFresh(b);
     return (b.radius||0)+apexGap()+apexHealthGuard()+80+(moving?Math.min(450,Math.hypot(b.vx||0,b.vy||0)*.25):0);
   }
   function apexSafetyBosses(job){
@@ -1118,7 +1127,7 @@
         else if(Math.hypot(rx+vx*t,ry+vy*t)<radius)return false;
       }
       return bosses.every(b=>{
-        const radius=apexStandRadius({lastBoss:b}),current=distance(p,b),moving=Date.now()-b.at<1500,rx=p.x-b.x,ry=p.y-b.y,vx=dx-(moving?b.vx||0:0)*duration,vy=dy-(moving?b.vy||0:0)*duration;
+        const radius=apexStandRadius({lastBoss:b}),current=distance(p,b),moving=apexMotionFresh(b),rx=p.x-b.x,ry=p.y-b.y,vx=dx-(moving?b.vx||0:0)*duration,vy=dy-(moving?b.vy||0:0)*duration;
         const t=Math.max(0,Math.min(1,-(rx*vx+ry*vy)/(vx*vx+vy*vy||1))),closest=Math.hypot(rx+vx*t,ry+vy*t);
         if(current<radius)return rx*dx+ry*dy>=-.01&&Math.hypot(rx+dx,ry+dy)>current+1;
         return closest>=radius;
@@ -1171,14 +1180,15 @@
   async function apexNavigate(destination,job,token,ignoreDeath=false){
     let attempts=0,failedPlans=0;job.navigateOutcome=null;
     while(running&&token===version&&(ignoreDeath||!job.dead)&&scene()==='play'){
+      if(ignoreDeath&&job.lootDeadline&&Date.now()>=job.lootDeadline){release();job.navigateOutcome='loot-timeout';return false;}
       if(!ignoreDeath&&!job.worldRefreshed&&apexNeedsWorldRefresh()){release();alt('keyup');job.navigateOutcome='snapshot';return true;}
       if(!ignoreDeath&&apexWorldStale()){release();alt('keyup');apexStatus.textContent='Apex movement paused until fresh mob updates arrive.';job.navigateOutcome='world';return true;}
       if(!ignoreDeath&&phase==='searching Apex Ultra+ zone'&&apexTargetVisible(job)){job.navigateOutcome='found';return true;}
-      const known=!ignoreDeath&&gardenReady&&apexSafetyBosses(job).find(b=>distance(position(),b)<apexStandRadius({lastBoss:b})+80);
+      const known=!ignoreDeath&&gardenReady&&apexSafetyBosses(job).find(b=>distance(position(),b)<apexStandRadius({lastBoss:b}));
       if(known){
         const escape=apexRetreatPoint({...job,lastBoss:known});const p=position(),next=escape?.world,keys=[];
         if(next){if(Math.abs(next.x-p.x)>25)keys.push(next.x>p.x?'d':'a');if(Math.abs(next.y-p.y)>25)keys.push(next.y>p.y?'s':'w');}
-        hold(apexSafeKeys(job,keys));apexStatus.textContent='Retreating to restore the Apex border gap.';await wait(90);continue;
+        const safeKeys=apexSafeKeys(job,keys);if(!safeKeys.length||++attempts>40){release();job.navigateOutcome='escape-blocked';return false;}hold(safeKeys);apexStatus.textContent='Retreating to restore the Apex border gap.';await wait(90);continue;
       }
       goal=destination;try{
         if(job.zoneEntered&&job.preset===3&&!ignoreDeath){alt('keyup');send('keydown',' ');}
@@ -1186,14 +1196,14 @@
         const path=plan(position(),safeGoal,allowed);
         const result=await navigate(path,token,false);
         if(result==='engage'&&job.blockerId){if(!await clearApexBlocker(job.blockerId,job,token))return false;continue;}
-        if(result==='arrived'||result==='found'||result==='zone'||result==='view'||result==='snapshot'){job.navigateOutcome=result;return true;}if(result==='screen'||result==='stopped')return false;
+        if(result==='arrived'||result==='found'||result==='zone'||result==='view'||result==='snapshot'){job.navigateOutcome=result;return true;}if(result==='screen'||result==='stopped'||result==='loot-timeout')return false;
       }catch(error){apex.lastError=error.message;if(++failedPlans>=3){release();job.navigateOutcome='blocked';return false;}}
       if(++attempts>20){release();apexStatus.textContent='Checking another route around the map walls.';return false;}release();await wait(180);
     }return false;
   }
   function apexStandPoint(job){
     const b=job.lastBoss,p=position(),radius=(b.radius||0)+45,offset=job.standDistance?Math.max(radius+25,job.standDistance):apexStandRadius(job);
-    if(!job.standDistance&&distance(p,b)<offset+80){job.standTarget=null;return apexRetreatPoint(job);}
+    if(!job.standDistance&&distance(p,b)<offset){job.standTarget=null;return apexRetreatPoint(job);}
     const inside=distance(p,b)<radius;if(!job.side||inside)job.side=p.x<b.x?-1:1;const sign=job.side;
     // Keep routes around the boss's body as well as the map's walls.
     let allowed=null;
@@ -1299,19 +1309,21 @@
         if(Math.abs(sx)>30)keys.push(sx>0?'d':'a');if(Math.abs(sy)>45)keys.push(sy>0?'s':'w');hold(apexSafeKeys(job,keys));if(stand.retreat)apexStatus.textContent='Too close to Apex. Retreating to restore the border gap.';await wait(90);
       }
       if(!running||token!==version)return;
-      release();alt('keyup');phase='Apex loot';beginApexLoot(job);
+      release();alt('keyup');phase='Apex loot';job.lootDeadline=Date.now()+90000;beginApexLoot(job);
       let magnetReady=scene()==='play'&&job.preset===3;
       if(magnetReady){if(!await swapTravelLoadout(token,['2']))return;}
       else if(!await apexEnsureSpawn(job,token))return;
       // Keep L3 and equip the magnet immediately after a living kill; use L2 for a respawn trip.
-      const kill=job.lastBoss;if(kill){while(running&&token===version){if(scene()!=='play'){magnetReady=false;if(!await apexEnsureSpawn(job,token))return;}if(await apexNavigate({x:kill.x,y:kill.y},job,token,true))break;}}
+      const kill=job.lastBoss;if(kill){while(running&&token===version&&Date.now()<job.lootDeadline){if(scene()!=='play'){magnetReady=false;if(!await apexEnsureSpawn(job,token))return;}if(await apexNavigate({x:kill.x,y:kill.y},job,token,true))break;await wait(500);}}
+      if(!running||token!==version)return;if(Date.now()>=job.lootDeadline){job.historyStatus='Loot route timed out; returning to farm';renderApexHistory();return;}
       if(!magnetReady&&(!await selectLoadout(3,token)||!await swapTravelLoadout(token,['2'])))return;lootStarted=Date.now();
-      while(running&&token===version&&Date.now()-lootStarted<45000){
+      while(running&&token===version&&Date.now()-lootStarted<45000&&Date.now()<job.lootDeadline){
         if(scene()!=='play'){if(!await apexEnsureSpawn(job,token))return;if(kill)await apexNavigate(kill,job,token,true);if(!await selectLoadout(3,token)||!await swapTravelLoadout(token,['2']))continue;}
         const drops=[...serverWorld.entities.values()].filter(e=>e.kind===4&&kill&&Math.hypot(e.x-kill.x,e.y-kill.y)<1200).sort((a,b)=>distance(pos,a)-distance(pos,b));
         if(!drops.length){await wait(800);if(Date.now()-lootStarted>2500)break;continue;}
         await apexNavigate(drops[0],job,token,true);await wait(150);
       }
+      if(!running||token!==version)return;
       updateApexLoot(job,networkLifeTotals);job.historyStatus=job.lootGains?.length?'Looted':'Loot visit complete; no inventory gains confirmed';renderApexHistory();apex.completed++;apexStatus.textContent=`Apex ${job.name} complete. Returning to ${saved.map}.`;
     }finally{
       if(!job.historyStatus?.startsWith('Loot')||job.historyStatus==='Looting'){job.historyStatus=job.abandoned?'Unconfirmed defeat: returned to farm':'Interrupted';renderApexHistory();}
@@ -1721,6 +1733,7 @@
     route=path.slice();const finalGoal=mapping.toWorld(route[route.length-1]);let last=position(),stuckAt=Date.now(),stuckPos=last,segmentFrom=last,progressDistance=Infinity,progressTarget=null,heading=null,lastTick=performance.now(),measuredSpeed=300;
     if(route.length>1&&distance(last,mapping.toWorld(route[0]))<75)route.shift();
     while(running&&token===version){
+      if(apex.active?.lootDeadline&&phase==='Apex loot'&&Date.now()>=apex.active.lootDeadline){release();return 'loot-timeout';}
       if(apex.active&&!apex.active.dead&&!apex.active.worldRefreshed&&phase==='searching Apex Ultra+ zone'&&apexNeedsWorldRefresh()){release();alt('keyup');return 'snapshot';}
       if(apex.active&&!apex.active.dead&&apexWorldStale()){release();alt('keyup');return 'world';}
       if(apex.active&&phase==='searching Apex Ultra+ zone'&&apexTargetVisible(apex.active)){release();return 'found';}
@@ -1949,7 +1962,7 @@
     if(bytes[0]===3){const totals=decodePlayerTotals(bytes);if(totals){if(networkLifeTotals&&networkLifeTotals.id!==totals.id){serverWorld.own=null;serverWorld.protocol=null;serverWorld.entityProtocol=null;serverWorld.entityProtocolConfirmed=false;serverWorld.entities.clear();}networkLifeTotals=totals;updateApexLoot(apex.active,totals);networkLifeStatus.profilesDecoded++;networkLifeStatus.profileProtocol=totals.protocol;networkLifeStatus.lastProfileAt=totals.receivedAt;}else networkLifeStatus.profilesRejected++;return;}
     if((bytes[0]===4&&bytes.length>=34)||(bytes[0]===24&&bytes.length>=18)){
       const d=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),offset=bytes[0]===4?25:9,code=bytes[offset],names={0:'garden',3:'desert',4:'computer',5:'ocean',6:'jungle',8:'ant_hell',9:'sewers'};
-      if(d.getUint16(offset+1,true)>0&&d.getUint16(offset+3,true)>0&&d.getUint32(offset+5,true)===bytes.length-offset-9){serverWorld.entities.clear();if(apex.active){apex.active.entityId=null;apex.active.zeroHP=null;apex.active.identityReset=true;apex.active.coverageSeen=null;apex.active.standTarget=null;apex.active.hazard=null;apex.active.reacquire=null;}verifiedMobTypes.clear();visualVotes.clear();visualPending.clear();visualRows=[];serverWorld.realm=names[code]||null;if(serverWorld.realm){liveRealm={id:serverWorld.realm,at:Date.now(),source:'server'};window.flowrixRealm=liveRealm;}realmShapeCache=null;}
+      if(d.getUint16(offset+1,true)>0&&d.getUint16(offset+3,true)>0&&d.getUint32(offset+5,true)===bytes.length-offset-9){serverWorld.entities.clear();if(apex.active){apex.active.entityId=null;apex.active.zeroHP=null;apex.active.identityReset=true;apex.active.coverageSeen=null;apex.active.coverageViews=null;apex.active.standTarget=null;apex.active.hazard=null;apex.active.reacquire=null;}verifiedMobTypes.clear();visualVotes.clear();visualPending.clear();visualRows=[];serverWorld.realm=names[code]||null;if(serverWorld.realm){liveRealm={id:serverWorld.realm,at:Date.now(),source:'server'};window.flowrixRealm=liveRealm;}realmShapeCache=null;}
       return;
     }
     if(bytes[0]===5){
@@ -1963,7 +1976,9 @@
       // Publish one selected header only; a rejected candidate cannot overwrite XP or position.
       serverWorld.own=own;pos={x:own.x,y:own.y,updatedAt:own.at};window.flowrixPosition=pos;if(networkLifeTotals&&Number.isFinite(own.xp))networkLifeTotals={...networkLifeTotals,xp:own.xp};
       if(!frame){serverWorld.rejected++;serverWorld.lastFailure=serverWorld.lastReject;return;}serverWorld.frames++;serverWorld.protocol=own.protocol;serverWorld.entityProtocol=frame.entityProtocol;serverWorld.entityProtocolConfirmed=serverWorld.entityProtocolConfirmed||frame.entityProtocolConfirmed;serverWorld.updatedAt=own.at;
-      for(const [id,e] of frame.changes)serverWorld.entities.set(id,e);for(const id of frame.removed)serverWorld.entities.delete(id);
+      for(const [id,e] of frame.changes)serverWorld.entities.set(id,e);
+      const hunted=apex.active,removedBoss=hunted&&frame.removed.includes(hunted.entityId)?frame.changes.get(hunted.entityId):null;if(removedBoss&&removedBoss.hp===0&&(removedBoss.kind===1||removedBoss.kind===6)&&removedBoss.rarity>=9&&apexMobType(removedBoss)===hunted.type){hunted.zeroHP={id:removedBoss.id,at:own.at};hunted.lastBoss={...hunted.lastBoss,x:removedBoss.x,y:removedBoss.y,radius:removedBoss.radius,hp:0,id:removedBoss.id,at:own.at};}
+      for(const id of frame.removed)serverWorld.entities.delete(id);
       observeApexEntities();apexRecordCoverage(apex.active);return;
     }
     if(bytes[0]===6)observeServerChat(bytes);

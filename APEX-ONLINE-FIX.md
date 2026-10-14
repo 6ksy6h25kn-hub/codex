@@ -132,3 +132,15 @@ The six-point Ant Hell patrol now follows the requested two-row arrangement: top
 ## Sandstorm route targets
 
 Apex travel no longer chooses sandstorms as route-clearing attack targets, and already selected sandstorms are released immediately. This is a type-based exclusion because ownership is not established by the current decoder; ordinary wild sandstorms are also excluded from route combat. Real Apex Sandstorm tracking and hunting remain unchanged. Regression coverage checks sandstorm rejection, normal hostile mob eligibility and early exit for a selected sandstorm.
+
+## DPS handoff and reliability corrections
+
+Switching to L3 can change the view and remove an Apex from the entity cache. The hunter now continues to reachable points around its last confirmed position, excludes already-arrived search cells, and only enters forced retreat when inside the safety radius. A blocked retreat returns control instead of waiting forever. Fresh equipped-slot evidence prevents an already equipped Antennae from being toggled out by key 1.
+
+The public saved-preset wire keys use two banks: L3 is key 12 and L5 is key 14. L selections now compare the correct bank and zero-based digit index, addressing the underlying reload bug. This is confirmed by the native client keyboard/preset code and a public-profile regression.
+
+Additional corrections pause movement on silent entity-stream loss, reacquire a fresh same-type Apex when a retained ID becomes invalid or its sole replacement has moved far away, and record actual conservative viewport footprints instead of treating entire unobserved search buckets as scanned. Pose timestamps keep stale velocity from inflating the safety gap or search prediction. Confirmed zero-HP evidence survives removal, including a zero-HP delta and removal in one accepted packet. Map resets clear that evidence.
+
+Corpse travel and collection share a 90-second total deadline, and a stopped/cancelled loot visit cannot increment completed hunts. Repeated rendered defeat messages are deduplicated while retained on-screen, but can confirm a later appearance after the old message disappears.
+
+The 35-test browser suite passes, including movement after a DPS visibility loss, already-equipped Antennae, exact L-bank preset keys, unreachable loot, cancellation, and silent stream recovery. Native normal-damage trials are tracked separately; these controlled regressions are not proof of flawless live hunting.
