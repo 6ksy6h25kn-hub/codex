@@ -173,3 +173,8 @@ A defeat announcement does not end a centipede job immediately. Every observed s
 `npm test`: 51 tests passed, zero failed or skipped. Browser regressions exercise all three centipede variants, head announcements, untracked body zero-HP/removal packets, bodies lost from view, a full simulated head/body/tail hunt, background build/respawn input, cooldown retry, manual cancellation and unexpected farming-loop exits. These are controlled tests, not completed online Apex kills.
 
 Earlier timed offline native trials totalled 34.17 minutes. Only 22.12 minutes began with a verified living placement and normal damage enabled. The Ant Hell public-world transcoding trial accepted 13,581 frames with zero rejected frames and 97,510 combined compact updates; it moved about 1,212 units between consecutive DPS samples while retaining active Antennae. Normal-damage trials still had deaths and no confirmed Apex kill or loot. The Garden case started at zero HP and is recovery-only evidence. Trial source hashes and limitations are retained in APEX-VALIDATION.json; those trials preceded the latest build-wait and unattended/centipede changes. No flawless live-hunting or one-hour normal-damage survival claim is established.
+
+
+## Ant Hell patrol order update
+
+The same six Ant Hell positions now follow the requested arrangement `1 4 5 / 2 3 6`: top left → bottom left → bottom middle → top middle → top right → bottom right, then back to 1. This changes their visit order while retaining the existing point positions and spacing. The focused Ant Hell patrol regression passes.
