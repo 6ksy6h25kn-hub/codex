@@ -252,5 +252,26 @@
     "passed": 1,
     "failed": 0,
     "positionsPreserved": true
+  },
+  "latestRouteAvoidanceRegression": {
+    "command": "npm test",
+    "passed": 58,
+    "failed": 0,
+    "skipped": 0,
+    "sourceSha256": "eea3f84a52020c65b2cf6da5051d9fd244d421816f199d5361626863c98631ea",
+    "ordinaryMobScope": "L3 on current Ultra+ floor; L2 and lower-difficulty floor keep direct travel",
+    "routeClearingFights": false,
+    "onlineDamageFreeTravelEstablished": false,
+    "checks": [
+      "Stationary-mob detour with real simulated movement",
+      "Fresh mob entering an existing route",
+      "Outward escape before Apex visibility",
+      "L2 direct route even inside Ultra",
+      "L3 activation only on Ultra+ floor",
+      "Fresh versus stale motion prediction",
+      "Projectiles without HP fields",
+      "Fully blocked corridor retains avoidance",
+      "Existing full suite regressions"
+    ]
   }
 }

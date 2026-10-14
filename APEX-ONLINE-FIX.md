@@ -178,3 +178,14 @@ Earlier timed offline native trials totalled 34.17 minutes. Only 22.12 minutes b
 ## Ant Hell patrol order update
 
 The same six Ant Hell positions now follow the requested arrangement `1 4 5 / 2 3 6`: top left → bottom left → bottom middle → top middle → top right → bottom right, then back to 1. This changes their visit order while retaining the existing point positions and spacing. The focused Ant Hell patrol regression passes.
+
+
+## Apex route avoidance in Ultra+ with L3
+
+Ordinary-mob avoidance now applies while the Apex job uses L3 and the player is on Ultra+ floor. L2 movement keeps its direct route, including when crossing Ultra+ before the DPS handoff. Lower-difficulty floor does not enable ordinary-mob avoidance. Existing Apex border and projectile safety checks remain available during travel.
+
+In the active avoidance mode, live ordinary mobs and NPCs receive a body-radius clearance of 180 units plus a low-health buffer and a limited fresh-motion buffer. Known `_pet` registry types are excluded; other ownership is not inferred. Moving threats reserve a short predicted path. The route checks current hazards every 150 ms, keeps the same destination when replanning, and short movement checks reject motion toward nearby threats even when the Apex is not currently visible. A player already inside a clearance area retains a starting floor cell and is directed outward. Route planning includes the same avoidance during the approach to a DPS stand-off point and L3 loot travel on Ultra+ floor.
+
+The old ordinary-mob route-clearing fights have been removed. Blind search and travel fold attack petals rather than stopping to fight a blocker. A fully blocked corridor retains the safety mask and returns control for another route or search point. The script cannot guarantee survival against unseen attacks, latency or threats that are faster than the player.
+
+`npm test`: 58 tests passed, zero failed or skipped. The new browser checks exercise actual simulated movement around stationary and newly arriving mobs, minimum clearance, nearby escape without a visible Apex, fresh versus stale prediction, projectiles lacking HP fields, a blocked corridor, direct L2 travel and L3/Ultra+ activation. Earlier DPS handoff, centipede, recovery, loadout, protocol and six-point Ant Hell regressions also pass. These controlled movement checks do not establish damage-free online Apex travel.

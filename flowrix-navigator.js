@@ -1100,10 +1100,6 @@
       await wait(180);
     }return false;
   }
-  function apexThreats(){
-    if(Date.now()-serverWorld.updatedAt>1000)return [];
-    return [...serverWorld.entities.values()].filter(e=>((e.kind===1&&e.rarity>=6&&e.hp>0)||(e.kind===3))&&Number.isFinite(e.x)&&Number.isFinite(e.y)&&distance(position(),e)<3000+(e.radius||0));
-  }
   function apexInUltraZone(){
     if(!gardenReady||!mapping||!pos||!gardenRanks)return false;
     const m=mapping.toMap(position()),x=Math.floor(m.x+.5),y=Math.floor(m.y+.5),size=gardenData.size;
@@ -1124,7 +1120,6 @@
     return (b.radius||0)+apexGap()+apexHealthGuard()+80+(moving?Math.min(450,Math.hypot(b.vx||0,b.vy||0)*.25):0);
   }
   function apexSafetyBosses(job){
-    if(job?.dead)return [];
     const known=apexKnownBoss(job),list=known?[known]:[];
     if(Date.now()-serverWorld.updatedAt<1000)for(const e of serverWorld.entities.values()){
       if((e.kind===1||e.kind===6)&&e.rarity>=9&&e.hp>0&&e.id!==known?.id&&Number.isFinite(e.x)&&Number.isFinite(e.y))list.push({...e,at:serverWorld.updatedAt});
@@ -1136,7 +1131,10 @@
     return mask;
   }
   function apexCircleMask(b,radius){
-    const mask=new Uint8Array(gardenOpen.length).fill(1),c=mapping.toMap(b),size=gardenData.size;
+    return apexBlockCircle(new Uint8Array(gardenOpen.length).fill(1),b,radius);
+  }
+  function apexBlockCircle(mask,b,radius){
+    const c=mapping.toMap(b),size=gardenData.size;
     const cellX=gardenData.worldW/size,cellY=gardenData.worldH/size,rx=radius/cellX+.5,ry=radius/cellY+.5;
     // Exclude every cell whose footprint intersects the safety circle, not just its center.
     for(let y=Math.max(0,Math.floor(c.y-ry));y<Math.min(size,Math.ceil(c.y+ry)+1);y++)for(let x=Math.max(0,Math.floor(c.x-rx));x<Math.min(size,Math.ceil(c.x+rx)+1);x++){
@@ -1170,7 +1168,7 @@
     return true;
   }
   function apexSafeKeys(job,keys,seconds=.09,speed=300){
-    const bosses=apexSafetyBosses(job);if(!bosses.length||!gardenReady)return keys;
+    if(!gardenReady)return keys;const bosses=apexSafetyBosses(job),dangers=apexAvoidanceThreats();if(!bosses.length&&!dangers.length)return keys;
     if(!pos||Date.now()-pos.updatedAt>1500)return [];
     const p=position(),own=serverWorld.own;
     const liveSpeed=own&&Date.now()-own.at<1000?Math.hypot(own.vx||0,own.vy||0):0;
@@ -1181,9 +1179,8 @@
       const d=direction(list),len=Math.hypot(d.x,d.y);
       const dx=len?d.x/len*step:0,dy=len?d.y/len*step:0,q={x:p.x+dx,y:p.y+dy};
       if(len&&!apexTerrainExitClear(g,p,q))return false;
-      const projectiles=apexThreats().filter(e=>e.kind===3&&e.hp>0);
-      for(const e of projectiles){const rx=p.x-e.x,ry=p.y-e.y,vx=dx-(e.vx||0)*duration,vy=dy-(e.vy||0)*duration,t=Math.max(0,Math.min(1,-(rx*vx+ry*vy)/(vx*vx+vy*vy||1))),current=Math.hypot(rx,ry),radius=(e.radius||20)+85;
-        if(current<radius){if(len&&(rx*dx+ry*dy<0||Math.hypot(rx+dx,ry+dy)<=current))return false;}
+      for(const e of dangers){const moving=apexMotionFresh(e),rx=p.x-e.x,ry=p.y-e.y,vx=dx-(moving?e.vx||0:0)*duration,vy=dy-(moving?e.vy||0:0)*duration,t=Math.max(0,Math.min(1,-(rx*vx+ry*vy)/(vx*vx+vy*vy||1))),current=Math.hypot(rx,ry),radius=apexAvoidanceRadius(e);
+        if(current<radius){if(Math.hypot(rx+vx*t,ry+vy*t)<current-1||Math.hypot(rx+vx,ry+vy)<=current+1)return false;}
         else if(Math.hypot(rx+vx*t,ry+vy*t)<radius)return false;
       }
       return bosses.every(b=>{
@@ -1200,45 +1197,23 @@
     if(mx>=0&&my>=0&&mx<g.W&&my<g.H&&!g.open[my*g.W+mx]){let anchor;try{anchor=mapping.toWorld(g.point(g.nearest(mapPoint,'Nearby open floor',1.5)));}catch{return [];}const exits=directions.filter(safe).sort((a,b)=>{const end=list=>{const d=direction(list),len=Math.hypot(d.x,d.y);return {x:p.x+d.x/len*step,y:p.y+d.y/len*step};};return distance(end(a),anchor)-distance(end(b),anchor);});if(exits[0]){job.terrainRecoveryAt=Date.now();return exits[0];}}
     if(safe([]))return [];
     const candidates=directions.filter(safe).sort((a,c)=>{
-      const score=list=>{const d=direction(list),len=Math.hypot(d.x,d.y);return Math.min(...bosses.map(b=>Math.hypot(p.x+d.x/len*step-b.x,p.y+d.y/len*step-b.y)-apexStandRadius({lastBoss:b})));};return score(c)-score(a);
+      const score=list=>{const d=direction(list),len=Math.hypot(d.x,d.y),q={x:p.x+d.x/len*step,y:p.y+d.y/len*step};return Math.min(...bosses.map(b=>distance(q,b)-apexStandRadius({lastBoss:b})),...dangers.map(e=>distance(q,e)-apexAvoidanceRadius(e)));};return score(c)-score(a);
     });return candidates[0]||[];
   }
-  function apexTravelMask(){
-    if(!gardenReady||!mapping)return null;
-    const threats=apexThreats().filter(e=>e.kind===3),p=position(),bossMask=apexSafetyMask(apex.active),blocked=[];
-    for(const [id,until] of apex.active?.blockerAvoid||[]){if(until<Date.now()){apex.active.blockerAvoid.delete(id);continue;}const e=serverWorld.entities.get(id);if(e&&distance(p,e)>(e.radius||20)+100)blocked.push(e);}
-    if(!threats.length&&!bossMask&&!blocked.length)return null;const mask=bossMask||new Uint8Array(gardenOpen.length).fill(1);
-    for(const e of blocked){const circle=apexCircleMask(e,(e.radius||20)+80);for(let i=0;i<mask.length;i++)mask[i]&=circle[i];}
-    for(const e of threats){const radius=(e.radius||20)+90;if(distance(p,e)<radius)continue;const m=mapping.toMap(e),rx=radius*gardenData.size/gardenData.worldW,ry=radius*gardenData.size/gardenData.worldH;
-      for(let y=Math.max(0,Math.floor(m.y-ry));y<Math.min(gardenData.size,Math.ceil(m.y+ry));y++)for(let x=Math.max(0,Math.floor(m.x-rx));x<Math.min(gardenData.size,Math.ceil(m.x+rx));x++)if(((x-m.x)/rx)**2+((y-m.y)/ry)**2<1)mask[y*gardenData.size+x]=0;
+  function apexAvoidanceThreats(){
+    if(!pos||Date.now()-serverWorld.updatedAt>1000)return [];
+    const avoidMobs=apex.active?.preset===3&&apexInUltraZone();
+    return [...serverWorld.entities.values()].filter(e=>(avoidMobs&&(e.kind===1||e.kind===6)&&e.rarity<9&&e.hp>0&&!String(apexMobType(e)||'').endsWith('_pet')||e.kind===3&&e.hp!==0)&&Number.isFinite(e.x)&&Number.isFinite(e.y)&&distance(pos,e)<6000+(e.radius||0));
+  }
+  function apexAvoidanceRadius(e){return (e.radius||20)+(e.kind===3?85:180+apexHealthGuard())+(apexMotionFresh(e)?Math.min(200,Math.hypot(e.vx||0,e.vy||0)*.2):0);}
+  function apexAvoidanceMask(base=null){
+    if(!gardenReady||!mapping||!pos)return base;const threats=apexAvoidanceThreats();if(!threats.length)return base;
+    const mask=base?base.slice():new Uint8Array(gardenOpen.length).fill(1),p=position(),cellDiagonal=Math.hypot(gardenData.worldW,gardenData.worldH)/gardenData.size;
+    for(const e of threats){const radius=apexAvoidanceRadius(e),moving=apexMotionFresh(e),vx=moving?e.vx||0:0,vy=moving?e.vy||0:0,speed=Math.hypot(vx,vy),ahead=speed?Math.min(.35,500/speed):0,steps=Math.max(1,Math.ceil(speed*ahead/Math.max(60,radius*.5)));
+      for(let i=0;i<=steps;i++){const t=ahead*i/steps,center={x:e.x+vx*t,y:e.y+vy*t},exclusion=Math.min(radius,Math.max(0,distance(p,center)-cellDiagonal));if(exclusion>0)apexBlockCircle(mask,center,exclusion);}
     }return mask;
   }
-  function apexRouteAttackable(e){return !!e&&e.kind===1&&e.rarity<9&&e.hp>0&&apexMobType(e)!=='sandstorm';}
-  async function clearApexBlocker(id,job,token){
-    if(!apexRouteAttackable(serverWorld.entities.get(id)))return true;
-    const savedPhase=phase,fight={standDistance:150};let lastHP=Infinity,damageAt=Date.now(),encounterAt=Date.now();phase='clearing route mob';
-    try{
-      while(running&&token===version&&!job.dead&&scene()==='play'){
-        if(apexWorldStale()){release();alt('keyup');return true;}
-        if(!await liveGate(token))return false;
-        const mob=serverWorld.entities.get(id);if(!apexRouteAttackable(mob))return true;
-        if(Date.now()-encounterAt>12000){(job.blockerAvoid??=new Map()).set(id,Date.now()+30000);apexStatus.textContent='Route mob is delaying the Apex hunt. Trying another path.';return true;}
-        if(mob.hp<lastHP-1e-7){lastHP=mob.hp;damageAt=Date.now();}else if(Date.now()-damageAt>6000){
-          (job.blockerAvoid??=new Map()).set(id,Date.now()+20000);apexStatus.textContent='Route mob is taking no damage. Continuing the Apex search by another path.';return true;
-        }
-        if(!job.zoneEntered&&apexInUltraZone())job.zoneEntered=true;
-        if(job.zoneEntered&&job.preset!==3&&!await selectLoadout(3,token))continue;
-        if(!await ensureApexVision(job,token))continue;
-        if(apexTargetVisible(job))return true;
-        alt('keyup');send('keydown',' ');
-        fight.lastBoss=mob;fight.standDistance=(mob.radius||0)+70;const stand=apexStandPoint(fight),name=mobCatalog?.[mobIDs[mob.type]]?.name||'mob';
-        apexStatus.textContent=`Clearing ${name} (${(mob.hp*100).toFixed(1)}% HP) with L${job.preset||2}.`;
-        if(!stand||distance(position(),stand.world)<60){hold([]);await wait(100);continue;}
-        const next=mapping.toWorld(stand.path[Math.min(1,stand.path.length-1)]),p=position(),keys=[];
-        if(Math.abs(next.x-p.x)>25)keys.push(next.x>p.x?'d':'a');if(Math.abs(next.y-p.y)>25)keys.push(next.y>p.y?'s':'w');hold(apexSafeKeys(job,keys));await wait(90);
-      }return false;
-    }finally{if(token===version){release();phase=savedPhase;}job.blockerId=null;}
-  }
+  function apexTravelMask(){return !gardenReady||!mapping?null:apexAvoidanceMask(apexSafetyMask(apex.active));}
   async function apexNavigate(destination,job,token,ignoreDeath=false){
     let attempts=0,failedPlans=0;job.navigateOutcome=null;
     while(running&&token===version&&(ignoreDeath||!job.dead)&&scene()==='play'){
@@ -1253,11 +1228,11 @@
         const safeKeys=apexSafeKeys(job,keys);if(!safeKeys.length||++attempts>40){release();job.navigateOutcome='escape-blocked';return false;}hold(safeKeys);apexStatus.textContent='Retreating to restore the Apex border gap.';await wait(90);continue;
       }
       goal=destination;try{
-        if(job.zoneEntered&&job.preset===3&&!ignoreDeath){alt('keyup');send('keydown',' ');}
-        const allowed=ignoreDeath?null:apexTravelMask(),g=grid(allowed),cell=g.nearest(mapping.toMap(destination),'Apex route destination',allowed?16:3),safeGoal=mapping.toWorld(g.point(cell));
+        if(!ignoreDeath){alt('keyup');send('keyup',' ');}
+        const allowed=apexTravelMask(),g=grid(allowed),cell=g.nearest(mapping.toMap(destination),'Apex route destination',allowed?16:3),safeGoal=mapping.toWorld(g.point(cell));
         const path=plan(position(),safeGoal,allowed);
         const result=await navigate(path,token,false);
-        if(result==='engage'&&job.blockerId){if(!await clearApexBlocker(job.blockerId,job,token))return false;continue;}
+        if(result==='avoid'){job.avoidanceReplans=(job.avoidanceReplans||0)+1;apexStatus.textContent='Routing around nearby mobs toward the Apex.';}
         if(result==='arrived'||result==='found'||result==='zone'||result==='view'||result==='snapshot'){job.navigateOutcome=result;return true;}if(result==='screen'||result==='stopped'||result==='loot-timeout')return false;
       }catch(error){apex.lastError=error.message;if(++failedPlans>=3){release();job.navigateOutcome='blocked';return false;}}
       if(++attempts>20){release();apexStatus.textContent='Checking another route around the map walls.';return false;}release();await wait(180);
@@ -1276,7 +1251,7 @@
         job.hazard={mask,center:{x:b.x,y:b.y},radius:exclusion};
       }allowed=job.hazard.mask;
     }
-    const threats=apexThreats().filter(e=>e.kind===3&&e.id!==b.id);if(threats.length){allowed=allowed?allowed.slice():new Uint8Array(gardenOpen.length).fill(1);for(const e of threats){const r=(e.radius||20)+85;if(distance(p,e)<r)continue;const c=mapping.toMap({x:e.x+(e.vx||0)*.2,y:e.y+(e.vy||0)*.2}),rx=r*gardenData.size/gardenData.worldW,ry=r*gardenData.size/gardenData.worldH;for(let y=Math.max(0,Math.floor(c.y-ry));y<Math.min(gardenData.size,Math.ceil(c.y+ry));y++)for(let x=Math.max(0,Math.floor(c.x-rx));x<Math.min(gardenData.size,Math.ceil(c.x+rx));x++)if(((x-c.x)/rx)**2+((y-c.y)/ry)**2<1)allowed[y*gardenData.size+x]=0;}}
+    allowed=apexAvoidanceMask(allowed);
     const g=grid(allowed),candidates=[],bearing=Math.atan2(p.y-b.y,p.x-b.x),sampleOffset=offset+(job.standDistance?0:Math.hypot(gardenData.worldW,gardenData.worldH)/gardenData.size);
     // Reuse a valid nearby stand-off target instead of changing sides every frame.
     const prior=job.standTarget,slack=Math.max(100,sampleOffset-offset+80);
@@ -1334,7 +1309,7 @@
         if(job.zoneEntered&&!dps){dps=job.preset===3||await selectLoadout(3,token);if(!dps)continue;if(!await ensureApexVision(job,token))continue;alt('keydown');}
         const boss=apexTargetVisible(job,1800)?job.lastBoss:null;
         if(!boss){
-          alt('keyup');if(dps)send('keydown',' ');phase='searching Apex Ultra+ zone';
+          alt('keyup');send('keyup',' ');phase='searching Apex Ultra+ zone';
           const segmentCleanup=apexSegmentsNeedSweep(job);
           if(segmentCleanup&&!job.segmentSweep){job.segmentSweep={startedAt:Date.now(),blocked:0};searchTargets=null;searchIndex=0;searchWide=true;}
           const spacing=apexScanWidth(job),oldSpacing=job.searchPlan?.spacing||600;if(!searchTargets||spacing>=oldSpacing*1.3||spacing<oldSpacing*.8){searchTargets=apexSearchTargets(searchWide);searchIndex=0;}
@@ -1798,7 +1773,7 @@
     return result;
   }
   async function navigateGarden(path,token,farming){
-    route=path.slice();const finalGoal=mapping.toWorld(route[route.length-1]);let last=position(),stuckAt=Date.now(),stuckPos=last,segmentFrom=last,progressDistance=Infinity,progressTarget=null,heading=null,lastTick=performance.now(),measuredSpeed=300;
+    route=path.slice();const finalGoal=mapping.toWorld(route[route.length-1]);let last=position(),stuckAt=Date.now(),stuckPos=last,segmentFrom=last,progressDistance=Infinity,progressTarget=null,heading=null,lastTick=performance.now(),measuredSpeed=300,lastAvoidanceCheck=-Infinity;
     if(route.length>1&&distance(last,mapping.toWorld(route[0]))<75)route.shift();
     while(running&&token===version){
       if(apex.active?.lootDeadline&&phase==='Apex loot'&&Date.now()>=apex.active.lootDeadline){release();return 'loot-timeout';}
@@ -1826,10 +1801,7 @@
       const target=mapping.toWorld(route[0]),dx=target.x-p.x,dy=target.y-p.y;
       const vx=target.x-segmentFrom.x,vy=target.y-segmentFrom.y,len=Math.hypot(vx,vy)||1,progress=((p.x-segmentFrom.x)*vx+(p.y-segmentFrom.y)*vy)/(len*len),look=Math.max(0,Math.min(1,progress+Math.max(100,Math.min(180,measuredSpeed*.4))/len));
       const steerX=distance(p,target)<100?dx:segmentFrom.x+vx*look-p.x,steerY=distance(p,target)<100?dy:segmentFrom.y+vy*look-p.y;
-      if(apex.active&&!apex.active.dead){const length=Math.hypot(steerX,steerY)||1,advance=Math.max(150,Math.min(500,measuredSpeed*.4)),ahead={x:p.x+steerX/length*advance,y:p.y+steerY/length*advance},threats=apexThreats();
-        const blocker=threats.filter(e=>apexRouteAttackable(e)&&e.id!==apex.active.entityId&&!(apex.active.blockerAvoid?.get(e.id)>Date.now())&&distance(ahead,e)<(e.radius||20)+150&&distance(ahead,e)<distance(p,e)).sort((a,b)=>distance(p,a)-distance(p,b))[0];
-        if(blocker){apex.active.blockerId=blocker.id;release();return 'engage';}
-        if(threats.some(e=>e.kind===3&&distance(ahead,e)<(e.radius||20)+75&&distance(ahead,e)<distance(p,e)-10)){release();return 'recover';}}
+      if(apex.active&&Date.now()-lastAvoidanceCheck>=150){lastAvoidanceCheck=Date.now();const allowed=apexTravelMask();if(allowed&&!clearLine(grid(allowed),mp,route[0])){release();return 'avoid';}}
       const desired=Math.atan2(steerY,steerX),laneError=Math.abs((p.x-segmentFrom.x)*vy-(p.y-segmentFrom.y)*vx)/len;
       const angleDifference=(a,b)=>Math.atan2(Math.sin(a-b),Math.cos(a-b));
       // Keep the current heading through small sensor corrections instead of chattering.
@@ -1847,8 +1819,8 @@
         obstacleVersion++;return 'recover';
       }
       status.textContent=`${phase} · ${route.length} route points · ${Math.round(distance(p,finalGoal))} units remaining`;
-      const safeKeys=apex.active&&!apex.active.dead?apexSafeKeys(apex.active,keys,.025,measuredSpeed):keys;
-      if(apex.active&&!apex.active.dead&&safeKeys.length===0&&keys.length){release();return 'recover';}
+      const safeKeys=apex.active?apexSafeKeys(apex.active,keys,.025,measuredSpeed):keys;
+      if(apex.active&&safeKeys.length===0&&keys.length){release();return 'avoid';}
       hold(safeKeys);last=p;await wait(25);
     }
     release();return 'stopped';
