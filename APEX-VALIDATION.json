@@ -427,5 +427,38 @@
       "Existing L2 direct travel and loot, cached L2, L3 attacks and projectile exclusion",
       "Full existing regression suite"
     ]
+  },
+  "latestLootHandoffRegression": {
+    "date": "2026-10-15",
+    "timezone": "America/New_York",
+    "scriptBuild": "2026-10-15-loot-direct",
+    "command": "npm test",
+    "passed": 87,
+    "failed": 0,
+    "skipped": 0,
+    "sourceSha256": "42976a54ed688018556fa1e4089feac0180023b5569a35bfeb0067704a8aa6d0",
+    "liveServerTest": false,
+    "liveInventoryPickupEstablished": false,
+    "malformedLivePacketLayoutEstablished": false,
+    "lootMobAvoidance": false,
+    "L2MobAvoidance": false,
+    "L3HuntingMobBorderGapUnits": 20,
+    "projectileAvoidance": false,
+    "reproducedBefore": [
+      "L2 corpse trip switched to L3 for magnet pickup, then could not cross a mob mask to the drop",
+      "The same pickup block after a living L3 defeat",
+      "Pickup blocked by another Apex exclusion circle",
+      "A confirmed defeat did not interrupt the current search route"
+    ],
+    "checks": [
+      "Three full hunt-loop loot handoffs reach a simulated drop and confirm a simulated inventory gain",
+      "Search route yields defeated promptly on Apex death",
+      "Recovery retains pre-stop phase, hunt, keys and blocker when current hunt is null",
+      "Malformed creation reports actual record kind, ID, index and bounded sample",
+      "A rejected creation packet requests a snapshot despite fresh later delta frames",
+      "Realm/account reset clears pending snapshot marker",
+      "Full existing regression suite"
+    ],
+    "currentPublicClientRead": "HTTP 403 for index/assets; standard Chromium HTTPS visit failed certificate validation; no verification bypass used"
   }
 }

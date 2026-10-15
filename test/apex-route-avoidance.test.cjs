@@ -20,6 +20,24 @@ async function fixture(check){
    }
    function mob(id,x,y,radius=350){return {id,kind:1,type:1,rarity:6,x,y,radius,hp:1,vx:0,vy:0,poseAt:Date.now(),at:Date.now()};}
    window.avoidanceTest={
+    async lootHandoff(preset=2,otherApex=false){
+     const job=avoidanceFixture();job.dead=preset===2;job.preset=preset;job.lastBoss={id:42,x:5000,y:5000,radius:300,hp:0,at:Date.now()};
+     gardenOpen.fill(0);for(let x=5;x<=90;x++)for(let y=48;y<=52;y++)gardenOpen[y*100+x]=1;gridCache=null;
+     serverWorld.entities=new Map([[1,{...mob(1,5500,5000,300),rarity:otherApex?9:6}],[50,{id:50,kind:4,type:1,rarity:6,x:6000,y:5000,radius:20}]]);
+     if(preset===3){serverWorld.entities.set(42,{...job.lastBoss,kind:1,type:0,rarity:9,hp:1,poseAt:Date.now()});job.lastBoss.hp=1;job.entityId=42;}
+     networkLifeTotals={id:'fixture',receivedAt:Date.now(),inventory:[{type:1,rarity:6,count:0}]};mobCatalogRefresh=null;spawnSelect.value='Garden';raritySelect.value='Ultra+';
+     setFarmMap=(name,rarity)=>{spawnSelect.value=name;raritySelect.value=rarity;};apexEnsureSpawn=async(j,t,n=2)=>{job.preset=n;return true;};selectLoadout=async n=>{job.preset=n;return true;};swapTravelLoadout=async()=>true;
+     ensureApexVision=async()=>true;const before=apex.completed,builds=[];let ticks=0,collected=false;running=true;const token=++version;
+     wait=async ms=>{fixtureNow+=ms;const dx=Number(heldKeys.has('d'))-Number(heldKeys.has('a')),dy=Number(heldKeys.has('s'))-Number(heldKeys.has('w')),len=Math.hypot(dx,dy);if(len){pos.x+=dx/len*300*ms/1000;pos.y+=dy/len*300*ms/1000;}pos.updatedAt=Date.now();serverWorld.updatedAt=Date.now();serverWorld.own.at=Date.now();if(builds.at(-1)!==job.preset)builds.push(job.preset);
+      if(!job.dead&&phase==='Apex DPS'){serverWorld.entities.get(42).hp=0;job.lastBoss.hp=0;confirmApexAnnouncement(job,'Fixture defeat during DPS');}
+      if(!collected&&distance(pos,{x:6000,y:5000})<100){collected=true;serverWorld.entities.delete(50);networkLifeTotals={...networkLifeTotals,receivedAt:Date.now(),inventory:[{type:1,rarity:6,count:1}]};updateApexLoot(job,networkLifeTotals);}if(++ticks>8000)throw Error('Loot handoff did not terminate');};
+     await runApex(job,token);const result={collected,completed:apex.completed-before,gains:job.lootGains,history:job.historyStatus,retained:apexDiagnostics().lastHunt,position:position(),builds,ticks};running=false;return result;
+    },
+    async midrouteDefeat(){
+     const job=avoidanceFixture();job.preset=2;phase='searching Apex Ultra+ zone';running=true;const token=++version;let ticks=0,deathPosition=null;
+     wait=async ms=>{fixtureNow+=ms;const dx=Number(heldKeys.has('d'))-Number(heldKeys.has('a')),dy=Number(heldKeys.has('s'))-Number(heldKeys.has('w')),len=Math.hypot(dx,dy);if(len){pos.x+=dx/len*300*ms/1000;pos.y+=dy/len*300*ms/1000;}pos.updatedAt=Date.now();serverWorld.updatedAt=Date.now();serverWorld.own.at=Date.now();if(++ticks===20){job.dead=true;deathPosition=position();}if(ticks>1500)throw Error('Search did not stop');};
+     const result=await apexNavigate({x:7000,y:5000},job,token),after=deathPosition&&distance(pos,deathPosition);running=false;return {result,outcome:job.navigateOutcome,after,ticks};
+    },
     categories(){
      avoidanceFixture();serverWorld.entities=new Map([
       [1,{...mob(1,2000,5000),rarity:0}],
@@ -179,4 +197,12 @@ test('L3 travel passes a mob at a 20-unit border gap without a larger detour',as
 
 test('Sending L2 immediately disables mob dodges during the remaining loadout-key waits',async()=>fixture(async p=>{
  const r=await p.evaluate(()=>avoidanceTest.l2Selection());assert(r.selected);assert(r.before>0);assert.equal(r.after,0,JSON.stringify(r));assert.equal(r.preset,2);
+}));
+
+for(const [preset,otherApex] of [[2,false],[3,false],[3,true]])test('Loot handoff reaches a drop beyond a mob after starting in L'+preset+(otherApex?' with another Apex nearby':''),async()=>fixture(async p=>{
+ const r=await p.evaluate(([preset,otherApex])=>avoidanceTest.lootHandoff(preset,otherApex),[preset,otherApex]);assert(r.collected,JSON.stringify(r));assert.equal(r.completed,1);assert.equal(r.gains?.[0]?.count,1);assert.equal(r.history,'Looted');assert.equal(r.retained.status,'Looted');assert.equal(r.retained.lootGains[0].count,1);assert(r.builds.includes(3));
+}));
+
+test('An Apex defeat stops the current search route promptly for loot handoff',async()=>fixture(async p=>{
+ const r=await p.evaluate(()=>avoidanceTest.midrouteDefeat());assert(r.result,JSON.stringify(r));assert.equal(r.outcome,'defeated');assert(r.after<=15);assert(r.ticks<=22);
 }));
