@@ -273,5 +273,49 @@
       "Fully blocked corridor retains avoidance",
       "Existing full suite regressions"
     ]
+  },
+  "latestApproachWaitRegression": {
+    "command": "npm test",
+    "passed": 64,
+    "failed": 0,
+    "skipped": 0,
+    "sourceSha256": "5a1c6750112972337185ac251fb81b439d2f691bd363b184e367a218a83c581f",
+    "liveServerTest": false,
+    "liveServerKillEstablished": false,
+    "preserved": {
+      "configuredApexBorderGap": true,
+      "directL2Movement": true,
+      "L3UltraOrdinaryMobAvoidance": true,
+      "projectileAvoidance": true
+    },
+    "reproducedBefore": [
+      {
+        "case": "Crowded but passable route",
+        "movementUnits": 0
+      },
+      {
+        "case": "Coarse-grid attack position",
+        "finalBorderGapUnits": 342
+      },
+      {
+        "case": "DPS no-safe-floor wait",
+        "movementUnits": 0
+      },
+      {
+        "case": "Valid far-away destination changes during wall detour",
+        "changed": true
+      }
+    ],
+    "checks": [
+      "Crowded corridor reaches its destination",
+      "Precise attack position reached while preserving Apex gap",
+      "DPS crowd approach makes progress",
+      "Committed target during a wall detour",
+      "Outward escape from an initial comfort-buffer overlap",
+      "Actual L2-to-L3 runApex loop reaches simulated damage range",
+      "Predicted threat centers checked on continuous route segments",
+      "Genuinely blocked corridor stays blocked",
+      "Full existing regression suite"
+    ]
   }
 }

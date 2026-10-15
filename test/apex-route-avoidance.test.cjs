@@ -36,14 +36,15 @@ async function fixture(check){
     closeEscape(){
      const job=avoidanceFixture();const e=mob(1,1200,5000,100);serverWorld.entities.set(1,e);
      const keys=apexSafeKeys(job,['d'],.09,300),dx=Number(keys.includes('d'))-Number(keys.includes('a')),dy=Number(keys.includes('s'))-Number(keys.includes('w')),len=Math.hypot(dx,dy),end={x:pos.x+(len?dx/len*45:0),y:pos.y+(len?dy/len*45:0)};
-     return {keys,before:distance(pos,e),after:distance(end,e),startOpen:apexTravelMask()[50*100+10]===1};
+     const route=apexApproachPath(job,position(),{x:7000,y:5000},apexTravelMask()),first=mapping.toWorld(route[0]);
+     return {keys,before:distance(pos,e),after:distance(end,e),canExit:apexSegmentClear(job,position(),first)};
     },
     prediction(){
      const job=avoidanceFixture(),e=mob(1,3000,5500,100);e.vy=-1400;serverWorld.entities.set(1,e);
-     const mask=apexAvoidanceMask(),predictedBlocked=mask[50*100+30]===0;e.poseAt=Date.now()-2000;e.at=e.poseAt;const stale=apexAvoidanceMask();
+     const mask=apexAvoidanceMask(),predictedBlocked=mask[50*100+30]===0,predictedSegmentBlocked=!apexSegmentClear(job,position(),{x:4000,y:5000});e.poseAt=Date.now()-2000;e.at=e.poseAt;const stale=apexAvoidanceMask();
      const shot={...mob(2,1500,5000,20),kind:3,hp:undefined,vx:-3000};serverWorld.entities=new Map([[2,shot]]);
      const shotKeys=apexSafeKeys(job,['d'],.09,300);
-     return {predictedBlocked,staleOpen:stale[50*100+30]===1,shotKeys};
+     return {predictedBlocked,predictedSegmentBlocked,staleOpen:stale[50*100+30]===1,shotKeys};
     },
     scope(){
      const job=avoidanceFixture();serverWorld.entities.set(1,mob(1,2000,5000));
@@ -51,7 +52,7 @@ async function fixture(check){
      return {ultraL3,ultraL2,outsideL3};
     },
     async journey(mode){
-     const job=avoidanceFixture();if(mode==='l2')job.preset=2;running=true;const token=++version,destination={x:7000,y:5000},e=mob(1,4000,mode==='moving'?7500:5000,350);serverWorld.entities.set(1,e);
+     const job=avoidanceFixture();if(mode==='l2')job.preset=2;running=true;const token=++version,destination={x:7000,y:5000},e=mob(1,mode==='close'?1200:4000,mode==='moving'?7500:5000,mode==='close'?100:350);serverWorld.entities.set(1,e);
      if(mode==='corridor'){gardenOpen.fill(0);for(let x=5;x<90;x++)gardenOpen[50*100+x]=1;gridCache=null;}
      const pressed=[];game.addEventListener('keydown',event=>pressed.push(event.key));let ticks=0,minGap=Infinity,mobInserted=false,maxSideStep=0;
      wait=async ms=>{fixtureNow+=Math.max(1,ms);ticks++;
@@ -77,10 +78,10 @@ test('Apex avoidance includes Common mobs, hostile NPCs and projectiles without 
  const r=await p.evaluate(()=>avoidanceTest.categories());assert.deepEqual(r.ids,[1,2,3,6]);assert(r.commonBlocked&&r.npcBlocked&&r.petOpen&&r.deadOpen);
 }));
 test('A nearby ordinary mob forces outward escape even before the Apex is visible',async()=>fixture(async p=>{
- const r=await p.evaluate(()=>avoidanceTest.closeEscape());assert(r.keys.length>0&&!r.keys.includes('d'));assert(r.after>r.before);assert(r.startOpen,'The player must retain a starting floor cell for escape');
+ const r=await p.evaluate(()=>avoidanceTest.closeEscape());assert(r.keys.length>0&&!r.keys.includes('d'));assert(r.after>r.before);assert(r.canExit,'The route must start with a continuous safe exit from the buffer');
 }));
 test('Fresh mob motion is predicted and projectiles without HP cannot be ignored',async()=>fixture(async p=>{
- const r=await p.evaluate(()=>avoidanceTest.prediction());assert(r.predictedBlocked&&r.staleOpen);assert(!r.shotKeys.includes('d'));
+ const r=await p.evaluate(()=>avoidanceTest.prediction());assert(r.predictedBlocked&&r.predictedSegmentBlocked&&r.staleOpen);assert(!r.shotKeys.includes('d'));
 }));
 test('Apex travel follows an actual detour around a living mob without attacking it',async()=>fixture(async p=>{
  const r=await p.evaluate(()=>avoidanceTest.journey('static'));assert(r.result,JSON.stringify(r));assert.equal(r.outcome,'arrived');assert(r.moved>5500);assert(r.goalDistance<200);assert(r.minGap>=180,JSON.stringify(r));assert(!r.pressed.includes(' '));assert.equal(r.preset,3);
@@ -96,4 +97,7 @@ test('Ordinary-mob avoidance activates for L3 inside Ultra+ and stays off for L2
 }));
 test('A corridor blocked by a mob cannot be crossed by dropping the avoidance mask',async()=>fixture(async p=>{
  const r=await p.evaluate(()=>avoidanceTest.journey('corridor'));assert.equal(r.result,false);assert.equal(r.outcome,'blocked');assert.equal(r.moved,0);assert(!r.pressed.includes(' '));
+}));
+test('A route starting inside a mob comfort buffer escapes and resumes instead of endlessly replanning',async()=>fixture(async p=>{
+ const r=await p.evaluate(()=>avoidanceTest.journey('close'));assert(r.result,JSON.stringify(r));assert(r.goalDistance<200);assert(r.minGap>=80,JSON.stringify(r));
 }));

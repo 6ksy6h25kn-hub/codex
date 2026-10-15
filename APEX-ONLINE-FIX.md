@@ -189,3 +189,15 @@ In the active avoidance mode, live ordinary mobs and NPCs receive a body-radius 
 The old ordinary-mob route-clearing fights have been removed. Blind search and travel fold attack petals rather than stopping to fight a blocker. A fully blocked corridor retains the safety mask and returns control for another route or search point. The script cannot guarantee survival against unseen attacks, latency or threats that are faster than the player.
 
 `npm test`: 58 tests passed, zero failed or skipped. The new browser checks exercise actual simulated movement around stationary and newly arriving mobs, minimum clearance, nearby escape without a visible Apex, fresh versus stale prediction, projectiles lacking HP fields, a blocked corridor, direct L2 travel and L3/Ultra+ activation. Earlier DPS handoff, centipede, recovery, loadout, protocol and six-point Ant Hell regressions also pass. These controlled movement checks do not establish damage-free online Apex travel.
+
+## L3 no-safe-floor approach wait
+
+The earlier route could stay still after switching to L3 even when a physically clear approach existed. Regression fixtures reproduced a corridor sealed by overlapping extra clearance, a coarse grid attack position that stopped about 342 units from the boss border, and a destination that shifted during a wall detour. The grid planner also shrank mob obstacles near the player, allowing paths that the exact movement checks rejected repeatedly.
+
+Planning now retains the full obstacle geometry. Continuous segment checks validate terrain, the configured Apex gap, ordinary-mob clearance and projected threat positions. Safe continuous segments connect the grid route to a precise attack position, avoiding unnecessary stand-off imposed by a snapped grid cell. A valid attack destination remains committed while the player walks toward it. A player starting inside an extra clearance area receives a safe outward escape before replanning.
+
+If wider margins prevent a route or approach movement stays blocked, L3 tries two smaller caution levels. Ordinary-mob extra clearance changes from 180 to 120 to 80 units, with bounded health and motion additions. Additional Apex padding changes from 80 to 40 to 20 units, and its extra speed buffer is capped at 450, 200 and 80 units. The configured Apex border gap and the Apex low-health retreat distance remain lower bounds; projectile clearance is retained. These levels apply to the current hunt. Ordinary-mob avoidance still applies only to L3 on Ultra+ floor; L2 keeps direct travel.
+
+The new behavioral checks cover a crowded but passable corridor, close approach without grid stand-off, a committed destination during a detour, escape from an initially overlapping comfort area, and the actual L2-to-L3 hunt control flow reaching an attacking position. The latter uses simulated movement and conditional simulated HP loss in a browser fixture; it does not establish a live-server kill or guarantee survival. Diagnostics now include the approach caution level, reason and selected attack position.
+
+Validation: `npm test` completed with 64 passing tests, zero failures and zero skipped tests.
