@@ -69,5 +69,5 @@ test('An early farming loop return restarts instead of leaving running true with
 }));
 
 test('Recovery preserves the stalled hunt context when the current hunt is already cleared',async()=>fixture(async p=>{
- const r=await p.evaluate(()=>unattendedTest.recoveryContext());assert.equal(r.hunt,null);assert.equal(r.scriptBuild,'2026-10-15-loot-direct');assert.equal(r.automation.phase,'patrol point 1/6');const c=r.recovery.events[0].context;assert.equal(c.phase,'Apex DPS');assert.equal(c.hunt.type,'hornet');assert.equal(c.hunt.preset,3);assert.equal(c.hunt.lastBlocked.reason,'mob');assert.deepEqual(c.keys,['d']);
+ const r=await p.evaluate(()=>unattendedTest.recoveryContext());assert.equal(r.hunt,null);assert.equal(r.scriptBuild,'2026-10-15-apex-route-progress');assert.equal(r.automation.phase,'patrol point 1/6');const c=r.recovery.events[0].context;assert.equal(c.phase,'Apex DPS');assert.equal(c.hunt.type,'hornet');assert.equal(c.hunt.preset,3);assert.equal(c.hunt.lastBlocked.reason,'mob');assert.deepEqual(c.keys,['d']);
 }));

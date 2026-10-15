@@ -460,5 +460,43 @@
       "Full existing regression suite"
     ],
     "currentPublicClientRead": "HTTP 403 for index/assets; standard Chromium HTTPS visit failed certificate validation; no verification bypass used"
+  },
+  "latestApexRouteProgressRegression": {
+    "date": "2026-10-15",
+    "timezone": "Etc/UTC",
+    "scriptBuild": "2026-10-15-apex-route-progress",
+    "command": "npm test",
+    "passed": 97,
+    "failed": 0,
+    "skipped": 0,
+    "sourceSha256": "a968e341bdf2501efc1e2881930b0933e2a72e1c7bae35f5a978da3c9979f9c7",
+    "completedAt": "2026-10-15T22:23:28.764488+00:00",
+    "liveServerTest": false,
+    "normalDamageSurvivalEstablished": false,
+    "L2MobAvoidance": false,
+    "L3HuntingMobBorderGapUnits": 20,
+    "projectileAvoidance": false,
+    "reproducedBefore": [
+      "L2 and L3 discard an essential nearby source waypoint and repeat 21 replans without moving",
+      "Whole-cell mob masks seal a three-row corridor with available clearance",
+      "Extra terrain lookahead rejects every needed short turn at 2400 units per second"
+    ],
+    "checks": [
+      "Both builds complete off-center corner routes",
+      "Full L2 bend with 150 ms position observations",
+      "L3 close detour at 300, 900 and 2400 units per second with fresh and delayed positions",
+      "Exact A* and smoothing segment checks prevent diagonals crossing the mob circle",
+      "Continuous L3 attacks during detours",
+      "Full existing regression suite"
+    ],
+    "laggedFastTrial": {
+      "speedUnitsPerSecond": 2400,
+      "observationIntervalMs": 150,
+      "arrived": true,
+      "replans": 1,
+      "minimumMobBodyGapUnits": 98.50007671797206,
+      "transientWallContacts": 3,
+      "attackInterruptions": 0
+    }
   }
 }

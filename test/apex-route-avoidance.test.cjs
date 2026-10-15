@@ -168,7 +168,7 @@ test('L2 keeps a straight terrain route through ordinary mobs, projectiles and r
 }));
 
 test('Changing from L2 to L3 on an existing route enables attacks and detours without losing the destination',async()=>fixture(async p=>{
- const r=await p.evaluate(()=>avoidanceTest.journey('transition'));assert(r.result,JSON.stringify(r));assert(r.transitioned);assert.equal(r.outcome,'arrived');assert(r.maxSideStep>400);assert(r.minGap>=20);assert.equal(r.l2AttackTicks,0);assert.equal(r.foldedL3Movement,0);assert(r.l3MovementTicks>0);assert(r.goalDistance<200);
+ const r=await p.evaluate(()=>avoidanceTest.journey('transition'));assert(r.result,JSON.stringify(r));assert(r.transitioned);assert.equal(r.outcome,'arrived');assert(r.maxSideStep>=370&&r.maxSideStep<450,JSON.stringify(r));assert(r.minGap>=20);assert.equal(r.l2AttackTicks,0);assert.equal(r.foldedL3Movement,0);assert(r.l3MovementTicks>0);assert(r.goalDistance<200);
 }));
 
 test('Changing back from L3 to L2 drops the old mob detour and folds attacks',async()=>fixture(async p=>{

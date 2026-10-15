@@ -807,7 +807,7 @@
   function apexRunSnapshot(job){return job?{at:Date.now(),phase,type:job.type,map:job.map,preset:job.preset,dead:!!job.dead,status:job.historyStatus||null,position:pos?{x:pos.x,y:pos.y}:null,target:job.moveTarget||goal||null,navigateOutcome:job.navigateOutcome||null,lastBlocked:job.lastBlockedMove||null,boss:job.lastBoss?{id:job.lastBoss.id,x:job.lastBoss.x,y:job.lastBoss.y,hp:job.lastBoss.hp,ageMs:Date.now()-job.lastBoss.at}:null,lootGains:(job.lootGains||[]).map(p=>({type:p.type,rarity:p.rarity,count:p.count}))}:null;}
   function automationSnapshot(){return {at:Date.now(),running,phase,map:spawnSelect.value,position:pos?{x:pos.x,y:pos.y,ageMs:Date.now()-pos.updatedAt}:null,target:goal||null,routePoints:route.length,nextWaypoint:gardenReady&&mapping&&route[0]?mapping.toWorld(route[0]):null,keys:[...heldKeys],expectedPreset:expectedLoadout?.number||null,lastProgressAgeMs:Date.now()-autoRecovery.lastProgress,hunt:apexRunSnapshot(apex.active)};}
   function apexDiagnostics(){return {
-    scriptBuild:'2026-10-15-loot-direct',automation:automationSnapshot(),lastHunt:apex.lastRun,
+    scriptBuild:'2026-10-15-apex-route-progress',automation:automationSnapshot(),lastHunt:apex.lastRun,
     world:{protocol:serverWorld.protocol||null,entityProtocol:serverWorld.entityProtocol||null,lastEntityFrameAgeMs:serverWorld.updatedAt?Date.now()-serverWorld.updatedAt:null,lastPlayerFrameAgeMs:serverWorld.own?.at?Date.now()-serverWorld.own.at:null,refreshNeeded:apexNeedsWorldRefresh(),refreshReason:serverWorld.snapshotNeededReason||null,frames:serverWorld.frames,rejected:serverWorld.rejected,records:serverWorld.entities.size,lastReject:serverWorld.lastFailure||null,lastRejectAgeMs:serverWorld.lastFailure?.at?Date.now()-serverWorld.lastFailure.at:null,apexRecords:[...serverWorld.entities.values()].filter(e=>(e.kind===1||e.kind===6)&&e.rarity>=9).map(e=>({id:e.id,type:e.type,catalog:mobIDs[e.type],screen:verifiedMobTypes.get(e.type)?.type,x:e.x,y:e.y,radius:e.radius,hp:e.hp}))},
     catalog:{...mobCatalogStatus,trusted:mobCatalogTrusted},
     screen:{lastFrameAgeMs:Date.now()-visualAt,labels:visualRows.length,pairs:visualPairs,cacheRecovery:{...atlasProbeState},learned:[...verifiedMobTypes].map(([id,v])=>({id,type:v.type,catalog:mobIDs[id]}))},
@@ -1154,12 +1154,12 @@
   function apexCircleMask(b,radius){
     return apexBlockCircle(new Uint8Array(gardenOpen.length).fill(1),b,radius);
   }
-  function apexBlockCircle(mask,b,radius){
+  function apexBlockCircle(mask,b,radius,footprint=true){
     const c=mapping.toMap(b),size=gardenData.size;
     const cellX=gardenData.worldW/size,cellY=gardenData.worldH/size,rx=radius/cellX+.5,ry=radius/cellY+.5;
-    // Exclude every cell whose footprint intersects the safety circle, not just its center.
+    // Boss masks reserve whole cells; ordinary mobs use exact centers and checked edges.
     for(let y=Math.max(0,Math.floor(c.y-ry));y<Math.min(size,Math.ceil(c.y+ry)+1);y++)for(let x=Math.max(0,Math.floor(c.x-rx));x<Math.min(size,Math.ceil(c.x+rx)+1);x++){
-      const dx=Math.max(0,Math.abs(x-c.x)-.5)*cellX,dy=Math.max(0,Math.abs(y-c.y)-.5)*cellY;
+      const dx=Math.max(0,Math.abs(x-c.x)-(footprint ? .5 : 0))*cellX,dy=Math.max(0,Math.abs(y-c.y)-(footprint ? .5 : 0))*cellY;
       if(Math.hypot(dx,dy)<radius)mask[y*size+x]=0;
     }return mask;
   }
@@ -1199,8 +1199,11 @@
     const direction=list=>({x:Number(list.includes('d'))-Number(list.includes('a')),y:Number(list.includes('s'))-Number(list.includes('w'))});
     const safe=list=>{
       const d=direction(list),len=Math.hypot(d.x,d.y);
-      const dx=len?d.x/len*step:0,dy=len?d.y/len*step:0,q={x:p.x+dx,y:p.y+dy};
-      if(len&&!apexTerrainExitClear(g,p,q))return blocked('terrain');
+      const dx=len?d.x/len*step:0,dy=len?d.y/len*step:0;
+      // Terrain only needs to stay clear until the next commanded input step.
+      // The additional mob-motion lookahead must not invent a wall collision.
+      const terrainStep=job.movementSpeed*seconds,terrainEnd={x:p.x+(len?d.x/len*terrainStep:0),y:p.y+(len?d.y/len*terrainStep:0)};
+      if(len&&!apexTerrainExitClear(g,p,terrainEnd))return blocked('terrain');
       for(const e of dangers){const moving=apexMotionFresh(e),radius=apexAvoidanceRadius(e);
         const rx=p.x-e.x,ry=p.y-e.y,vx=dx-(moving?e.vx||0:0)*duration,vy=dy-(moving?e.vy||0:0)*duration,t=Math.max(0,Math.min(1,-(rx*vx+ry*vy)/(vx*vx+vy*vy||1))),current=Math.hypot(rx,ry);
         if(current<radius){if(Math.hypot(rx+vx*t,ry+vy*t)<current-1||Math.hypot(rx+vx,ry+vy)<=current+1)return blocked('mob',e);}
@@ -1238,7 +1241,8 @@
   function apexAvoidanceMask(base=null){
     if(!gardenReady||!mapping||!pos)return base;const threats=apexAvoidanceThreats();if(!threats.length)return base;
     const mask=base?base.slice():new Uint8Array(gardenOpen.length).fill(1);
-    for(const e of threats)apexBlockCircle(mask,e,apexAvoidanceRadius(e));return mask;
+    mask.mobCircles=threats.map(e=>({x:e.x,y:e.y,radius:apexAvoidanceRadius(e)}));
+    for(const e of threats)apexBlockCircle(mask,e,apexAvoidanceRadius(e),false);return mask;
   }
   function apexTravelMask(){return apexTerrainOnly()||!gardenReady||!mapping?null:apexAvoidanceMask(apexSafetyMask(apex.active));}
   function apexSegmentClear(job,from,to){
@@ -1781,9 +1785,23 @@
       }
       if(best<0||d>limit)throw new Error(`${label} is not near reachable floor.`);return best;
     }
-    const g={W,H,open,point,nearest};gridCache={allowed,version:obstacleVersion,g};return g;
+    const g={W,H,open,point,nearest};
+    if(allowed?.mobCircles?.length){
+      const circles=allowed.mobCircles.map(e=>({...e,minX:e.x-e.radius,maxX:e.x+e.radius,minY:e.y-e.radius,maxY:e.y+e.radius,radiusSquared:Math.max(0,e.radius-.01)**2}));
+      g.segmentClear=(a,b)=>{
+        const from=mapping.toWorld(a),to=mapping.toWorld(b),dx=to.x-from.x,dy=to.y-from.y,length=dx*dx+dy*dy;
+        const minX=Math.min(from.x,to.x),maxX=Math.max(from.x,to.x),minY=Math.min(from.y,to.y),maxY=Math.max(from.y,to.y);
+        for(const e of circles){
+          if(e.maxX<minX||e.minX>maxX||e.maxY<minY||e.minY>maxY)continue;
+          const t=Math.max(0,Math.min(1,((e.x-from.x)*dx+(e.y-from.y)*dy)/(length||1)));
+          if((from.x+dx*t-e.x)**2+(from.y+dy*t-e.y)**2<e.radiusSquared)return false;
+        }return true;
+      };
+    }
+    gridCache={allowed,version:obstacleVersion,g};return g;
   }
   function clearLine(g,a,b){
+    if(g.segmentClear&&!g.segmentClear(a,b))return false;
     const dx=b.x-a.x,dy=b.y-a.y,n=Math.ceil(Math.max(Math.abs(dx),Math.abs(dy))*4);let last=null;
     for(let k=0;k<=n;k++){
       const f=n?k/n:0,x=Math.round(a.x+dx*f),y=Math.round(a.y+dy*f);
@@ -1803,6 +1821,7 @@
       for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
         if(!dx&&!dy)continue;const xx=x+dx,yy=y+dy;if(xx<0||yy<0||xx>=g.W||yy>=g.H)continue;const next=yy*g.W+xx;if(!g.open[next]||closed[next])continue;
         if(dx&&dy&&(!g.open[y*g.W+xx]||!g.open[yy*g.W+x]))continue;
+        if(g.segmentClear&&!g.segmentClear({x,y},{x:xx,y:yy}))continue;
         const value=cost[i]+(dx&&dy?Math.SQRT2:1);if(value<cost[next]){cost[next]=value;previous[next]=i;push(next,value+heuristic(next));}
       }
     }
@@ -1815,7 +1834,6 @@
   }
   async function navigateGarden(path,token,farming){
     route=path.slice();const finalGoal=mapping.toWorld(route[route.length-1]),routePreset=apex.active?.preset;let last=position(),stuckAt=Date.now(),stuckPos=last,segmentFrom=last,progressDistance=Infinity,progressTarget=null,heading=null,lastTick=performance.now(),measuredSpeed=300,lastAvoidanceCheck=-Infinity;
-    if(route.length>1&&distance(last,mapping.toWorld(route[0]))<75)route.shift();
     while(running&&token===version){
       if(apex.active?.lootDeadline&&phase==='Apex loot'&&Date.now()>=apex.active.lootDeadline){release();return 'loot-timeout';}
       if(apex.active?.dead&&phase!=='Apex loot'){release();return 'defeated';}
