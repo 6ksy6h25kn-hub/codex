@@ -498,5 +498,22 @@
       "transientWallContacts": 3,
       "attackInterruptions": 0
     }
+  },
+  "latestMapLootRecoveryRegression": {
+    "date": "2026-10-15",
+    "timezone": "America/New_York",
+    "scriptBuild": "2026-10-15-map-loot-recovery",
+    "command": "npm test",
+    "passed": 98,
+    "failed": 0,
+    "skipped": 0,
+    "sourceSha256": "916b4998de82e6a4f006ad5e0a9e39ebce71e705ae88dff1af3f94bf8fb95b1c",
+    "liveServerTest": false,
+    "recordingInspected": true,
+    "checks": [
+      "Spawn transition waits for the requested realm header instead of reacting to the previous realm",
+      "Equipped-to-inventory loadout changes do not appear as Apex loot",
+      "Full existing regression suite"
+    ]
   }
 }

@@ -267,3 +267,12 @@ Before/after browser regressions reproduce the source-waypoint freeze in both bu
 Two prior assertions were aligned with the corrected behavior: the build-transition test now accepts a close detour around a 350-unit mob while still asserting at least 20 units of measured body clearance, rather than requiring the older inflated sidestep. The terrain-component fixture now commands a diagonal long enough to actually enter its blocked tile; it still requires the safe axis and rejects wall crossing and distant blocked-cell escape.
 
 Final validation: `npm test` completed with **97 passing tests, zero failures and zero skipped tests**. Source SHA-256: `a968e341bdf2501efc1e2881930b0933e2a72e1c7bae35f5a978da3c9979f9c7`.
+
+
+## Map transfer loop and false loot attribution
+
+The submitted recording shows the game selecting Computer, loading into play, immediately returning to the spawn menu, and repeating. The server realm field still held the previous map for a short interval after the play canvas appeared. `apexEnsureSpawn` treated that stale field as a confirmed wrong-map arrival and exited. Build `2026-10-15-map-loot-recovery` now waits up to five seconds for the requested realm header after an automatic spawn selection. A confirmed mismatch still returns to the menu and resets the selection state before retrying.
+
+Loot accounting now compares total owned petals: inventory plus equipped slots. The old inventory-only comparison counted loadout and reserve swaps as gains, which explains history entries listing many equipped build petals even when no Apex drop was collected. A recent matching Apex sighting is also attached to a defeat announcement when the active job has lost its live entity, preserving a corpse coordinate for the loot trip when available.
+
+Validation: `npm test` completed with **98 passing tests, zero failures and zero skipped tests**. The new browser regression reproduces a stale Ant Hell realm while Computer loads and confirms that no exit click occurs before the Computer header arrives. The loot regression moves petals between inventory and equipped slots and confirms that only a genuinely added test item is reported. Source SHA-256: `916b4998de82e6a4f006ad5e0a9e39ebce71e705ae88dff1af3f94bf8fb95b1c`. These are controlled browser tests; live Apex pickup remains to be confirmed with this build.

@@ -800,14 +800,21 @@
   let runtimePetalCache=null;
   function runtimePetalCatalog(){if(runtimePetalCache?.module===window.Module)return runtimePetalCache;try{const petals=JSON.parse(Module.FS.readFile('/data/petals.json',{encoding:'utf8'})),mobs=JSON.parse(Module.FS.readFile('/data/mobs.json',{encoding:'utf8'}));runtimePetalCache={module:window.Module,petals,mobs,ids:buildPetalIDs(petals,mobs)};return runtimePetalCache;}catch{return null;}}
   function apexPetalName(type,rarity){let name='Petal #'+type;const catalog=runtimePetalCatalog(),key=catalog?.ids[type];if(key){const explicit=catalog.petals[key];if(explicit)name=explicit.name||key;else if(key.endsWith('_egg'))name=(catalog.mobs[key.slice(0,-4)]?.name||key.slice(0,-4))+' Egg';}return (['Common','Uncommon','Rare','Epic','Legendary','Mythic','Ultra','Super','Unique','Apex'][rarity]||'Rarity '+rarity)+' '+name;}
-  function updateApexLoot(job,totals){if(!job?.lootInventoryStart||totals?.id!==job.lootAccount||totals.receivedAt<job.lootInventoryAt)return;const gains=[];for(const p of totals.inventory||[]){const count=p.count-(job.lootInventoryStart[p.type+':'+p.rarity]||0);if(count>0)gains.push({...p,count,name:apexPetalName(p.type,p.rarity)});}if(JSON.stringify(gains)!==JSON.stringify(job.lootGains||[])){job.lootGains=gains;renderApexHistory();}}
-  function beginApexLoot(job){job.historyStatus='Looting';const totals=networkLifeTotals;if(totals&&Date.now()-totals.receivedAt<3000){job.lootAccount=totals.id;job.lootInventoryAt=Date.now();job.lootInventoryStart=Object.fromEntries((totals.inventory||[]).map(p=>[p.type+':'+p.rarity,p.count]));}renderApexHistory();}
+  function apexOwnedPetals(totals){
+    const counts={};for(const p of totals?.inventory||[])counts[p.type+':'+p.rarity]=(counts[p.type+':'+p.rarity]||0)+(p.count||0);
+    // Server inventory excludes equipped petals. Include them so loadout swaps
+    // during the loot trip cannot appear as newly collected items.
+    for(const p of totals?.equipped||[])if(p&&p.type!==65535)counts[p.type+':'+p.rarity]=(counts[p.type+':'+p.rarity]||0)+1;
+    return counts;
+  }
+  function updateApexLoot(job,totals){if(!job?.lootInventoryStart||totals?.id!==job.lootAccount||totals.receivedAt<job.lootInventoryAt)return;const gains=[],owned=apexOwnedPetals(totals);for(const [key,total] of Object.entries(owned)){const count=total-(job.lootInventoryStart[key]||0);if(count>0){const [type,rarity]=key.split(':').map(Number);gains.push({type,rarity,count,name:apexPetalName(type,rarity)});}}if(JSON.stringify(gains)!==JSON.stringify(job.lootGains||[])){job.lootGains=gains;renderApexHistory();}}
+  function beginApexLoot(job){job.historyStatus='Looting';const totals=networkLifeTotals;if(totals&&Date.now()-totals.receivedAt<3000){job.lootAccount=totals.id;job.lootInventoryAt=Date.now();job.lootInventoryStart=apexOwnedPetals(totals);}renderApexHistory();}
   renderApexHistory();
 
   function apexRunSnapshot(job){return job?{at:Date.now(),phase,type:job.type,map:job.map,preset:job.preset,dead:!!job.dead,status:job.historyStatus||null,position:pos?{x:pos.x,y:pos.y}:null,target:job.moveTarget||goal||null,navigateOutcome:job.navigateOutcome||null,lastBlocked:job.lastBlockedMove||null,boss:job.lastBoss?{id:job.lastBoss.id,x:job.lastBoss.x,y:job.lastBoss.y,hp:job.lastBoss.hp,ageMs:Date.now()-job.lastBoss.at}:null,lootGains:(job.lootGains||[]).map(p=>({type:p.type,rarity:p.rarity,count:p.count}))}:null;}
   function automationSnapshot(){return {at:Date.now(),running,phase,map:spawnSelect.value,position:pos?{x:pos.x,y:pos.y,ageMs:Date.now()-pos.updatedAt}:null,target:goal||null,routePoints:route.length,nextWaypoint:gardenReady&&mapping&&route[0]?mapping.toWorld(route[0]):null,keys:[...heldKeys],expectedPreset:expectedLoadout?.number||null,lastProgressAgeMs:Date.now()-autoRecovery.lastProgress,hunt:apexRunSnapshot(apex.active)};}
   function apexDiagnostics(){return {
-    scriptBuild:'2026-10-15-apex-route-progress',automation:automationSnapshot(),lastHunt:apex.lastRun,
+    scriptBuild:'2026-10-15-map-loot-recovery',automation:automationSnapshot(),lastHunt:apex.lastRun,
     world:{protocol:serverWorld.protocol||null,entityProtocol:serverWorld.entityProtocol||null,lastEntityFrameAgeMs:serverWorld.updatedAt?Date.now()-serverWorld.updatedAt:null,lastPlayerFrameAgeMs:serverWorld.own?.at?Date.now()-serverWorld.own.at:null,refreshNeeded:apexNeedsWorldRefresh(),refreshReason:serverWorld.snapshotNeededReason||null,frames:serverWorld.frames,rejected:serverWorld.rejected,records:serverWorld.entities.size,lastReject:serverWorld.lastFailure||null,lastRejectAgeMs:serverWorld.lastFailure?.at?Date.now()-serverWorld.lastFailure.at:null,apexRecords:[...serverWorld.entities.values()].filter(e=>(e.kind===1||e.kind===6)&&e.rarity>=9).map(e=>({id:e.id,type:e.type,catalog:mobIDs[e.type],screen:verifiedMobTypes.get(e.type)?.type,x:e.x,y:e.y,radius:e.radius,hp:e.hp}))},
     catalog:{...mobCatalogStatus,trusted:mobCatalogTrusted},
     screen:{lastFrameAgeMs:Date.now()-visualAt,labels:visualRows.length,pairs:visualPairs,cacheRecovery:{...atlasProbeState},learned:[...verifiedMobTypes].map(([id,v])=>({id,type:v.type,catalog:mobIDs[id]}))},
@@ -869,6 +876,7 @@
   function apexSegmented(job){return /^(?:desert_|evil_)?centipede$/.test(job?.type||'');}
   function apexMatchesType(job,type){return type===job.type||apexSegmented(job)&&type===job.type+'_body';}
   function confirmApexAnnouncement(job,source){
+    if(!job.lastBoss){const sighting=[...apexSightings.values()].filter(b=>apexMatchesType(job,b.type)&&b.realm===mapFile(job.map)&&Date.now()-b.at<15000).sort((a,b)=>b.at-a.at)[0];if(sighting)job.lastBoss={...sighting,hp:0};}
     if(apexSegmented(job)){job.defeatAnnouncedAt=Date.now();job.historyStatus='Defeat announced; checking all centipede segments';}
     else{job.dead=true;job.killedAt=Date.now();job.defeatSource=source;job.historyStatus='Defeated';}
     renderApexHistory();
@@ -1088,13 +1096,20 @@
     if(!initGarden())throw Error('Automatic Apex navigation requires the game map assets.');raritySelect.value=[...raritySelect.options].some(o=>o.value===rarity)?rarity:'Ultra+';
   }
   async function apexEnsureSpawn(job,token,loadout=2){
-    let clicked=0,chosen=false,lastKind='',loaded=false;
+    let clicked=0,chosen=false,lastKind='',loaded=false,playRealmWait=0;const wantedRealm=mapFile(job.map);
     while(running&&token===version){
       if(!await liveGate(token))return false;
       const info=screenInfo();
       if(info.kind==='play'){
         const tutorial=freshText('Skip Tutorial');if(tutorial){await clickPoint(tutorial,token);await wait(150);}
-        if(serverWorld.realm&&serverWorld.realm!==mapFile(job.map)){await returnToSpawnMenu(token);await wait(200);continue;}
+        if(serverWorld.realm&&serverWorld.realm!==wantedRealm){
+          // On a fresh spawn the old realm marker can survive briefly after the
+          // game canvas appears. Wait for the new realm header before exiting.
+          playRealmWait||=Date.now();
+          if(chosen&&Date.now()-playRealmWait<5000){release();apexStatus.textContent=`Waiting for ${job.map} to finish loading…`;await wait(120);continue;}
+          await returnToSpawnMenu(token);playRealmWait=0;chosen=false;loaded=false;await wait(200);continue;
+        }
+        playRealmWait=0;
         if(!pos||Date.now()-pos.updatedAt>1500){await preparePosition(token);await wait(100);continue;}
         if(!loaded){if(!await selectLoadout(loadout,token))continue;loaded=true;job.searchPetal=false;job.viewScale=null;firstLoadoutSwapDone=true;deathLoadoutSwapPending=false;deathLoadoutLatched=false;}
         return true;
