@@ -201,3 +201,14 @@ If wider margins prevent a route or approach movement stays blocked, L3 tries tw
 The new behavioral checks cover a crowded but passable corridor, close approach without grid stand-off, a committed destination during a detour, escape from an initially overlapping comfort area, and the actual L2-to-L3 hunt control flow reaching an attacking position. The latter uses simulated movement and conditional simulated HP loss in a browser fixture; it does not establish a live-server kill or guarantee survival. Diagnostics now include the approach caution level, reason and selected attack position.
 
 Validation: `npm test` completed with 64 passing tests, zero failures and zero skipped tests.
+
+
+## Travel corner and moving-projectile stalls
+
+A fast-travel browser fixture reproduced another stationary replan loop. The waypoint arrival tolerance skipped an inside turn before the player could see clear floor to the next segment. Replanning selected the same snapped source and skipped the same turn again. A waypoint is now skipped only when the segment from the actual player position to the following waypoint is clear. This applies to normal patrol navigation and Apex travel; Apex checks also retain mob and boss clearance.
+
+A second fixture reproduced zero movement in a clear corridor because a receding projectile was represented as a permanent obstacle. Long-route masks and segment checks now reserve mob bodies and Apex stand-off circles, while projectile collision checks operate in local steering. Projectile dodge prediction looks ahead for the time needed to sidestep, capped at 0.8 seconds. It retains an 85-unit margin around the projectile body and checks relative velocity directly, replacing the extra speed-based radius that double-counted motion. Route retry pauses continue to run the safety controller every 50 ms instead of leaving inputs released for the whole pause. Projectile ownership is still not inferred.
+
+Copied Apex diagnostics now include the current preset, Ultra+ membership, movement target, route outcome, replan count, and the latest rejected movement with its age, requested keys, speed, reason and blocking entity. This distinguishes terrain, ordinary mobs, projectiles and Apex spacing in later reports.
+
+Validation: `npm test` completed with **70 passing tests, zero failures and zero skipped tests**. Added movement cases cover L2 and L3 turns at 900 and 2,400 units per second with simulated floor collisions, travel behind a receding shot, and an incoming projectile dodge followed by resumed travel without simulated body contact. Existing direct L2 travel, L3-only Ultra+ mob avoidance, configured Apex spacing, blocked corridors, centipede tracking, recovery, loadout and protocol checks also pass. These are controlled browser fixtures; this update has not been exercised in a live account session.

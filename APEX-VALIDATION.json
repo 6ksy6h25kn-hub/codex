@@ -317,5 +317,34 @@
       "Genuinely blocked corridor stays blocked",
       "Full existing regression suite"
     ]
+  },
+  "latestTravelStallRegression": {
+    "date": "2026-10-15",
+    "command": "npm test",
+    "passed": 70,
+    "failed": 0,
+    "skipped": 0,
+    "sourceSha256": "add1701e6b81e4a3ba338e21c9353188604da861250286a21d908753f79c6d0c",
+    "liveServerTest": false,
+    "onlineDamageFreeTravelEstablished": false,
+    "reproducedBefore": [
+      "Fast L2 travel repeatedly skipped a tight turn and stopped about 2361 units short of its destination",
+      "Receding projectile sealed a corridor in the route mask; movement remained zero"
+    ],
+    "changes": [
+      "Validate the next segment before skipping a near waypoint",
+      "Handle projectiles in local relative-motion steering rather than as permanent route obstacles",
+      "Predict projectile sidesteps up to 0.8 seconds ahead without double-counting velocity in the radius",
+      "Continue safety steering during route retry pauses",
+      "Report movement rejection reasons and blocking entities in copied diagnostics"
+    ],
+    "checks": [
+      "L2 and L3 corner travel at 900 and 2400 units per second with simulated floor collision checks",
+      "Travel behind a receding projectile",
+      "Incoming projectile avoidance and resumed travel without simulated body contact",
+      "Diagnostic projectile-blocker identity and age",
+      "Existing Apex gap, L2 scope, L3 scope, ordinary mob detours and blocked-corridor checks",
+      "Full regression suite"
+    ]
   }
 }

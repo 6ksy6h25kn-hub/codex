@@ -44,28 +44,32 @@ async function fixture(check){
      const mask=apexAvoidanceMask(),predictedBlocked=mask[50*100+30]===0,predictedSegmentBlocked=!apexSegmentClear(job,position(),{x:4000,y:5000});e.poseAt=Date.now()-2000;e.at=e.poseAt;const stale=apexAvoidanceMask();
      const shot={...mob(2,1500,5000,20),kind:3,hp:undefined,vx:-3000};serverWorld.entities=new Map([[2,shot]]);
      const shotKeys=apexSafeKeys(job,['d'],.09,300);
-     return {predictedBlocked,predictedSegmentBlocked,staleOpen:stale[50*100+30]===1,shotKeys};
+     return {predictedBlocked,predictedSegmentBlocked,staleOpen:stale[50*100+30]===1,shotKeys,blocked:apexDiagnostics().hunt.movement.lastBlocked};
     },
     scope(){
      const job=avoidanceFixture();serverWorld.entities.set(1,mob(1,2000,5000));
      const ultraL3=apexAvoidanceThreats().map(e=>e.id);job.preset=2;const ultraL2=apexAvoidanceThreats().map(e=>e.id);job.preset=3;gardenRanks.fill(5);const outsideL3=apexAvoidanceThreats().map(e=>e.id);
      return {ultraL3,ultraL2,outsideL3};
     },
-    async journey(mode){
-     const job=avoidanceFixture();if(mode==='l2')job.preset=2;running=true;const token=++version,destination={x:7000,y:5000},e=mob(1,mode==='close'?1200:4000,mode==='moving'?7500:5000,mode==='close'?100:350);serverWorld.entities.set(1,e);
+    async journey(mode,travelSpeed=300){
+     const job=avoidanceFixture();if(mode==='l2'||mode==='fast'||mode==='receding-shot')job.preset=2;running=true;const token=++version,destination={x:7000,y:5000},e=mob(1,mode==='close'?1200:4000,mode==='moving'?7500:5000,mode==='close'?100:350);serverWorld.entities.set(1,e);
+     if(mode.startsWith('fast')){gardenOpen.fill(0);for(let x=5;x<=45;x++)for(let y=48;y<=52;y++)gardenOpen[y*100+x]=1;for(let x=43;x<=47;x++)for(let y=48;y<=72;y++)gardenOpen[y*100+x]=1;for(let x=43;x<=75;x++)for(let y=68;y<=72;y++)gardenOpen[y*100+x]=1;gridCache=null;destination.y=7000;serverWorld.entities.set(99,{...mob(99,8500,5000,300),rarity:9});serverWorld.entities.delete(1);}
+     if(mode==='incoming-shot'){e.x=2000;e.kind=3;e.radius=20;e.vx=-1000;}
+     if(mode==='receding-shot'){e.x=3000;e.kind=3;e.radius=20;e.vx=800;gardenOpen.fill(0);for(let x=5;x<=90;x++)for(let y=48;y<=52;y++)gardenOpen[y*100+x]=1;gridCache=null;}
      if(mode==='corridor'){gardenOpen.fill(0);for(let x=5;x<90;x++)gardenOpen[50*100+x]=1;gridCache=null;}
-     const pressed=[];game.addEventListener('keydown',event=>pressed.push(event.key));let ticks=0,minGap=Infinity,mobInserted=false,maxSideStep=0;
+     const pressed=[];game.addEventListener('keydown',event=>pressed.push(event.key));let ticks=0,minGap=Infinity,mobInserted=false,maxSideStep=0,wallContacts=0;
      wait=async ms=>{fixtureNow+=Math.max(1,ms);ticks++;
+      if(mode==='receding-shot'||mode==='incoming-shot'){e.x+=e.vx*ms/1000;e.poseAt=Date.now();e.at=Date.now();}
       if(mode==='moving'&&!mobInserted&&ticks>=20){e.y=5000;e.poseAt=Date.now();e.at=Date.now();mobInserted=true;}
       const dx=Number(heldKeys.has('d'))-Number(heldKeys.has('a')),dy=Number(heldKeys.has('s'))-Number(heldKeys.has('w')),len=Math.hypot(dx,dy);
-      if(len){const step=Math.min(12,300*ms/1000);pos.x+=dx/len*step;pos.y+=dy/len*step;}
+      if(len){const step=travelSpeed*ms/1000,substeps=Math.max(1,Math.ceil(step/20));serverWorld.own.vx=dx/len*travelSpeed;serverWorld.own.vy=dy/len*travelSpeed;for(let k=0;k<substeps;k++){const x=pos.x+dx/len*step/substeps,y=pos.y+dy/len*step/substeps;if(!gardenOpen[Math.round(y/100)*100+Math.round(x/100)]){wallContacts++;serverWorld.own.vx=0;serverWorld.own.vy=0;break;}pos.x=x;pos.y=y;}}else{serverWorld.own.vx=0;serverWorld.own.vy=0;}
       pos.updatedAt=Date.now();serverWorld.updatedAt=Date.now();serverWorld.own.at=Date.now();
       minGap=Math.min(minGap,distance(pos,e)-e.radius);
       maxSideStep=Math.max(maxSideStep,Math.abs(pos.y-5000));
       if(ticks>2500){running=false;throw Error('Avoidance did not finish');}
      };
      const origin=position(),result=await apexNavigate(destination,job,token),outcome=job.navigateOutcome;running=false;
-     return {result,outcome,minGap,maxSideStep,goalDistance:distance(pos,destination),moved:distance(origin,pos),pressed,preset:job.preset,ticks,replans:job.avoidanceReplans||0};
+     return {result,outcome,minGap,maxSideStep,goalDistance:distance(pos,destination),moved:distance(origin,pos),pressed,preset:job.preset,position:position(),wallContacts,ticks,replans:job.avoidanceReplans||0};
     }
    };
   `;
@@ -81,7 +85,7 @@ test('A nearby ordinary mob forces outward escape even before the Apex is visibl
  const r=await p.evaluate(()=>avoidanceTest.closeEscape());assert(r.keys.length>0&&!r.keys.includes('d'));assert(r.after>r.before);assert(r.canExit,'The route must start with a continuous safe exit from the buffer');
 }));
 test('Fresh mob motion is predicted and projectiles without HP cannot be ignored',async()=>fixture(async p=>{
- const r=await p.evaluate(()=>avoidanceTest.prediction());assert(r.predictedBlocked&&r.predictedSegmentBlocked&&r.staleOpen);assert(!r.shotKeys.includes('d'));
+ const r=await p.evaluate(()=>avoidanceTest.prediction());assert(r.predictedBlocked&&r.predictedSegmentBlocked&&r.staleOpen);assert(!r.shotKeys.includes('d'));assert.equal(r.blocked.reason,'projectile');assert.equal(r.blocked.entity.kind,3);assert.deepEqual(r.blocked.requested,['d']);assert.equal(r.blocked.ageMs,0);
 }));
 test('Apex travel follows an actual detour around a living mob without attacking it',async()=>fixture(async p=>{
  const r=await p.evaluate(()=>avoidanceTest.journey('static'));assert(r.result,JSON.stringify(r));assert.equal(r.outcome,'arrived');assert(r.moved>5500);assert(r.goalDistance<200);assert(r.minGap>=180,JSON.stringify(r));assert(!r.pressed.includes(' '));assert.equal(r.preset,3);
@@ -100,4 +104,20 @@ test('A corridor blocked by a mob cannot be crossed by dropping the avoidance ma
 }));
 test('A route starting inside a mob comfort buffer escapes and resumes instead of endlessly replanning',async()=>fixture(async p=>{
  const r=await p.evaluate(()=>avoidanceTest.journey('close'));assert(r.result,JSON.stringify(r));assert(r.goalDistance<200);assert(r.minGap>=80,JSON.stringify(r));
+}));
+
+test('Fast L2 travel negotiates narrow route corners without getting stuck before the Apex',async()=>fixture(async p=>{
+ const r=await p.evaluate(()=>avoidanceTest.journey('fast',2400));assert(r.result,JSON.stringify(r));assert.equal(r.outcome,'arrived');assert(r.goalDistance<200);assert.equal(r.wallContacts,0);
+}));
+
+test('A receding projectile does not seal an otherwise clear travel corridor',async()=>fixture(async p=>{
+ const r=await p.evaluate(()=>avoidanceTest.journey('receding-shot'));assert(r.result,JSON.stringify(r));assert.equal(r.outcome,'arrived');assert(r.goalDistance<200);assert(r.minGap>=100);
+}));
+
+test('An incoming projectile is dodged locally and travel resumes without body contact',async()=>fixture(async p=>{
+ const r=await p.evaluate(()=>avoidanceTest.journey('incoming-shot'));assert(r.result,JSON.stringify(r));assert(r.minGap>=40,JSON.stringify(r));assert(r.maxSideStep>60);assert(r.goalDistance<200);
+}));
+
+for(const [mode,speed] of [['fast',900],['fast-l3',900],['fast-l3',2400]])test('Narrow corner travel in '+(mode==='fast'?'L2':'L3')+' at '+speed+' units per second keeps every turn',async()=>fixture(async p=>{
+ const r=await p.evaluate(([mode,speed])=>avoidanceTest.journey(mode,speed),[mode,speed]);assert(r.result,JSON.stringify(r));assert.equal(r.outcome,'arrived');assert(r.goalDistance<200);assert.equal(r.wallContacts,0);
 }));
