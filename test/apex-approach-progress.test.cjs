@@ -20,7 +20,7 @@ async function fixture(check){
     screenInfo=()=>({kind:'play'});liveGate=async()=>true;ensureExpectedLoadout=async()=>true;realmMismatch=()=>false;
     return job;
    }
-   function advance(job,ms=90){fixtureNow+=ms;const dx=Number(heldKeys.has('d'))-Number(heldKeys.has('a')),dy=Number(heldKeys.has('s'))-Number(heldKeys.has('w')),len=Math.hypot(dx,dy);if(len){pos.x+=dx/len*300*ms/1000;pos.y+=dy/len*300*ms/1000;}pos.updatedAt=Date.now();serverWorld.updatedAt=Date.now();serverWorld.own.at=Date.now();job.lastBoss.at=Date.now();}
+   function advance(job,ms=90){fixtureNow+=ms;const dx=Number(heldKeys.has('d'))-Number(heldKeys.has('a')),dy=Number(heldKeys.has('s'))-Number(heldKeys.has('w')),len=Math.hypot(dx,dy);if(len){pos.x+=dx/len*300*ms/1000;pos.y+=dy/len*300*ms/1000;}pos.updatedAt=Date.now();serverWorld.updatedAt=Date.now();serverWorld.own.at=Date.now();if(job.lastBoss)job.lastBoss.at=Date.now();}
    window.approachTest={
     async crowdedRoute(){
      const job=approachFixture(true);phase='Apex travel';running=true;const token=++version;let steps=0,minBorder=Infinity;
@@ -43,15 +43,16 @@ async function fixture(check){
      const job=approachFixture();for(let y=5;y<=55;y++)gardenOpen[y*100+60]=0;gridCache=null;
      const first=apexStandPoint(job);pos={x:4500,y:5900,updatedAt:Date.now()};const second=apexStandPoint(job);return {first:first?.world,second:second?.world};
     },
-    async l3Hunt(){
-     const job=approachFixture(true),boss=serverWorld.entities.get(42);running=true;const token=++version,before=apex.completed;let ticks=0,hits=0,extended=false,minMobBorder=Infinity,minBossBorder=Infinity;
+    async l3Hunt(blind=false){
+     const job=approachFixture(true),boss=serverWorld.entities.get(42);running=true;const token=++version,before=apex.completed;let ticks=0,hits=0,extended=false,minMobBorder=Infinity,minBossBorder=Infinity,trashHits=0,searchMovement=0,foldedSearchMovement=0;
+     if(blind){serverWorld.entities.delete(42);job.entityId=null;job.lastBoss=null;apexSearchTargets=()=>[{x:7300,y:5000}];}
      game.addEventListener('keydown',e=>{if(e.key===' ')extended=true;});game.addEventListener('keyup',e=>{if(e.key===' ')extended=false;});
      networkLifeTotals=null;mobCatalogRefresh=null;spawnSelect.value='Garden';raritySelect.value='Ultra+';
      setFarmMap=(name,rarity)=>{spawnSelect.value=name;raritySelect.value=rarity;};apexEnsureSpawn=async(j,t,number=2)=>{j.preset=number;return true;};selectLoadout=async number=>{job.preset=number;return true;};ensureApexVision=async()=>true;swapTravelLoadout=async()=>true;
-     wait=async ms=>{advance(job,ms);ticks++;if(phase==='Apex DPS'&&extended){const gap=distance(pos,boss)-boss.radius;minBossBorder=Math.min(minBossBorder,gap);if(gap>=100&&gap<=280&&boss.hp>0){boss.hp=Math.max(0,boss.hp-.25);hits++;}}
-      for(const e of serverWorld.entities.values())if(e.rarity<9)minMobBorder=Math.min(minMobBorder,distance(pos,e)-e.radius);observeApexEntities();if(ticks>1200)throw Error('L3 no-safe-floor wait did not recover');
+     wait=async ms=>{if(blind&&job.preset===3&&phase==='searching Apex Ultra+ zone'&&[...heldKeys].some(k=>['w','a','s','d'].includes(k))){searchMovement++;if(!extended)foldedSearchMovement++;}advance(job,ms);ticks++;if(blind){if(pos.x>=6500)serverWorld.entities.set(42,boss);if(job.preset===3&&extended)for(const e of serverWorld.entities.values())if(e.rarity<9&&e.hp>0&&distance(pos,e)-e.radius<900){e.hp=0;trashHits++;}}if(phase==='Apex DPS'&&extended){const gap=distance(pos,boss)-boss.radius;minBossBorder=Math.min(minBossBorder,gap);if(gap>=100&&gap<=280&&boss.hp>0){boss.hp=Math.max(0,boss.hp-.25);hits++;}}
+      for(const e of serverWorld.entities.values())if(e.rarity<9&&e.hp>0)minMobBorder=Math.min(minMobBorder,distance(pos,e)-e.radius);observeApexEntities();if(ticks>1200)throw Error('L3 no-safe-floor wait did not recover');
      };
-     await runApex(job,token);running=false;return {hits,completed:apex.completed-before,minMobBorder,minBossBorder,ticks};
+     await runApex(job,token);running=false;return {hits,completed:apex.completed-before,minMobBorder,minBossBorder,ticks,trashHits,searchMovement,foldedSearchMovement};
     }
    };
   `;
@@ -74,4 +75,8 @@ test('A valid far-away attack position stays committed while walking around a wa
 }));
 test('The real L2-to-L3 hunt loop gets past the no-safe-floor wait and reaches an attacking position',async()=>fixture(async p=>{
  const r=await p.evaluate(()=>approachTest.l3Hunt());assert.equal(r.hits,4,JSON.stringify(r));assert.equal(r.completed,1);assert(r.minMobBorder>=80);assert(r.minBossBorder>=100);assert(r.ticks<1200);
+}));
+
+test('An L3 hunt attacks route mobs while searching, then acquires and approaches the Apex',async()=>fixture(async p=>{
+ const r=await p.evaluate(()=>approachTest.l3Hunt(true));assert.equal(r.trashHits,2,JSON.stringify(r));assert(r.searchMovement>100);assert.equal(r.foldedSearchMovement,0);assert.equal(r.hits,4);assert.equal(r.completed,1);assert(r.minBossBorder>=100);
 }));

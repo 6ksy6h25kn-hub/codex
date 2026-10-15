@@ -346,5 +346,29 @@
       "Existing Apex gap, L2 scope, L3 scope, ordinary mob detours and blocked-corridor checks",
       "Full regression suite"
     ]
+  },
+  "latestBuildMovementRegression": {
+    "date": "2026-10-15",
+    "command": "npm test",
+    "passed": 74,
+    "failed": 0,
+    "skipped": 0,
+    "sourceSha256": "d3957568efcf0784d02209819aca80833370697e6aa1ad03a238e22e5fba1a6d",
+    "liveServerTest": false,
+    "normalDamageSurvivalEstablished": false,
+    "behavior": {
+      "L2": "Terrain-only navigation; no mob, projectile or Apex avoidance",
+      "L3": "Attack during travel and search; route around mobs on the current floor; retain the configured Apex gap",
+      "buildChange": "Rebuild the existing route for the selected mode"
+    },
+    "checks": [
+      "Direct L2 route through ordinary mobs, projectiles and retained or visible Apex mobs",
+      "L3 attacks stay active during stationary and moving mob detours",
+      "L2-to-L3 transition enables attacks and a detour while retaining the destination",
+      "L3-to-L2 transition drops the old detour and folds attacks",
+      "Simulated full hunt attacks two route mobs during search, acquires the Apex, and reaches DPS range",
+      "Existing full regression suite"
+    ],
+    "simulatedHuntDamage": true
   }
 }

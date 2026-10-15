@@ -715,8 +715,8 @@
     if(vision&&apex.active){apex.active.searchPetal=true;apex.active.visionSince=Date.now();}
     return true;
   }
-  async function apexLoadoutWait(ms,token){
-    let elapsed=0;while(elapsed<ms){if(!running||token!==version)return;const job=apex.active;if(job&&!job.dead&&gardenReady&&pos&&Date.now()-pos.updatedAt<1000&&scene()==='play')hold(apexSafeKeys(job,[],.05));const slice=Math.min(50,ms-elapsed);await wait(slice);elapsed+=slice;}
+  async function apexLoadoutWait(ms,token,travelAttack=false){
+    let elapsed=0;while(elapsed<ms){if(!running||token!==version)return;const job=apex.active;if(job&&!job.dead&&gardenReady&&pos&&Date.now()-pos.updatedAt<1000&&scene()==='play'){if(travelAttack&&inputAllowed())apexTravelAttack(job);hold(apexSafeKeys(job,[],.05));}const slice=Math.min(50,ms-elapsed);await wait(slice);elapsed+=slice;}
   }
   async function swapTravelLoadout(token,keys=['3','4']){
     for(const key of keys){
@@ -1131,6 +1131,7 @@
     return (b.radius||0)+apexGap()+apexHealthGuard()+[80,40,20][level]+(moving?Math.min([450,200,80][level],Math.hypot(b.vx||0,b.vy||0)*.25):0);
   }
   function apexSafetyBosses(job){
+    if(job?.preset===2)return [];
     const known=apexKnownBoss(job),list=known?[known]:[];
     if(Date.now()-serverWorld.updatedAt<1000)for(const e of serverWorld.entities.values()){
       if((e.kind===1||e.kind===6)&&e.rarity>=9&&e.hp>0&&e.id!==known?.id&&Number.isFinite(e.x)&&Number.isFinite(e.y))list.push({...e,at:serverWorld.updatedAt});
@@ -1220,9 +1221,10 @@
       const score=list=>{const d=direction(list),len=Math.hypot(d.x,d.y),q={x:p.x+d.x/len*step,y:p.y+d.y/len*step};return Math.min(...bosses.map(b=>distance(q,b)-apexStandRadius({lastBoss:b})),...dangers.map(e=>distance(q,e)-apexAvoidanceRadius(e)));};return score(c)-score(a);
     });return candidates[0]||[];
   }
+  function apexTravelAttack(job){const type=job?.preset===3&&!job.dead?'keydown':'keyup';alt(type);send(type,' ');}
   function apexAvoidanceThreats(){
-    if(!pos||Date.now()-serverWorld.updatedAt>1000)return [];
-    const avoidMobs=apex.active?.preset===3&&apexInUltraZone();
+    if(apex.active?.preset===2||!pos||Date.now()-serverWorld.updatedAt>1000)return [];
+    const avoidMobs=apex.active?.preset===3;
     return [...serverWorld.entities.values()].filter(e=>(avoidMobs&&(e.kind===1||e.kind===6)&&e.rarity<9&&e.hp>0&&!String(apexMobType(e)||'').endsWith('_pet')||e.kind===3&&e.hp!==0)&&Number.isFinite(e.x)&&Number.isFinite(e.y)&&distance(pos,e)<6000+(e.radius||0));
   }
   function apexAvoidanceRadius(e){
@@ -1263,6 +1265,7 @@
       if(!ignoreDeath&&!job.worldRefreshed&&apexNeedsWorldRefresh()){release();alt('keyup');job.navigateOutcome='snapshot';return true;}
       if(!ignoreDeath&&apexWorldStale()){release();alt('keyup');apexStatus.textContent='Apex movement paused until fresh mob updates arrive.';job.navigateOutcome='world';return true;}
       if(!ignoreDeath&&phase==='searching Apex Ultra+ zone'&&apexTargetVisible(job)){job.navigateOutcome='found';return true;}
+      apexTravelAttack(job);
       const known=!ignoreDeath&&gardenReady&&apexSafetyBosses(job).find(b=>distance(position(),b)<apexStandRadius({lastBoss:b}));
       if(known){
         const escape=apexRetreatPoint({...job,lastBoss:known});const p=position(),next=escape?.world,keys=[];
@@ -1270,14 +1273,13 @@
         const safeKeys=apexSafeKeys(job,keys);if(!safeKeys.length||++attempts>40){release();job.navigateOutcome='escape-blocked';return false;}hold(safeKeys);apexStatus.textContent='Retreating to restore the Apex border gap.';await wait(90);continue;
       }
       goal=destination;try{
-        if(!ignoreDeath){alt('keyup');send('keyup',' ');}
         const allowed=apexTravelMask(),path=apexApproachPath(job,position(),destination,allowed);
         const result=await navigate(path,token,false);
         if(progressPoint&&distance(position(),progressPoint)>60){progressPoint=position();progressAt=Date.now();}
         if(result==='avoid'){job.avoidanceReplans=(job.avoidanceReplans||0)+1;if(Date.now()-progressAt>=1200&&apexRelaxApproach(job,'Repeated blocked route movement'))progressAt=Date.now();apexStatus.textContent='Routing around nearby mobs toward the Apex.';}
         if(result==='arrived'||result==='found'||result==='zone'||result==='view'||result==='snapshot'){job.navigateOutcome=result;return true;}if(result==='screen'||result==='stopped'||result==='loot-timeout')return false;
-      }catch(error){apex.lastError=error.message;if(apexRelaxApproach(job,'No route with the wider comfort buffer')){release();await wait(100);continue;}if(++failedPlans>=3){release();job.navigateOutcome='blocked';return false;}}
-      if(++attempts>20){release();apexStatus.textContent='Checking another route around the map walls.';return false;}release();await apexLoadoutWait(180,token);
+      }catch(error){apex.lastError=error.message;if(apexRelaxApproach(job,'No route with the wider comfort buffer')){release();await apexLoadoutWait(100,token,true);continue;}if(++failedPlans>=3){release();job.navigateOutcome='blocked';return false;}}
+      if(++attempts>20){release();apexStatus.textContent='Checking another route around the map walls.';return false;}release();await apexLoadoutWait(180,token,true);
     }return false;
   }
   function apexStandPoint(job){
@@ -1352,16 +1354,16 @@
         if(job.zoneEntered&&!dps){dps=job.preset===3||await selectLoadout(3,token);if(!dps)continue;if(!await ensureApexVision(job,token))continue;alt('keydown');}
         const boss=apexTargetVisible(job,1800)?job.lastBoss:null;
         if(!boss){
-          alt('keyup');send('keyup',' ');phase='searching Apex Ultra+ zone';
+          apexTravelAttack(job);phase='searching Apex Ultra+ zone';
           const segmentCleanup=apexSegmentsNeedSweep(job);
           if(segmentCleanup&&!job.segmentSweep){job.segmentSweep={startedAt:Date.now(),blocked:0};searchTargets=null;searchIndex=0;searchWide=true;}
           const spacing=apexScanWidth(job),oldSpacing=job.searchPlan?.spacing||600;if(!searchTargets||spacing>=oldSpacing*1.3||spacing<oldSpacing*.8){searchTargets=apexSearchTargets(searchWide);searchIndex=0;}
           if(segmentCleanup&&searchTargets.length&&searchIndex>=searchTargets.length){if(job.segmentSweep.blocked){job.abandoned=true;job.abandonReason='Centipede cleanup floor blocked; remaining segments unconfirmed';return;}job.segmentSweep.completed=true;if(completeApexSegments(job))break;release();await wait(250);continue;}
           if(searchIndex>=searchTargets.length){searchWide=true;searchTargets=apexSearchTargets(true);searchIndex=0;}
-          if(!searchTargets.length){release();apexStatus.textContent='No reachable Apex search floor with the current wall margin.';await wait(500);continue;}
+          if(!searchTargets.length){release();apexStatus.textContent='No reachable Apex search floor with the current wall margin.';await apexLoadoutWait(500,token,true);continue;}
           const canReacquire=job.lastBoss?.hp>0&&Date.now()-job.lastBoss.at<60000&&job.reacquireExhaustedAt!==job.lastBoss.at;
           let skipped=0;while(!segmentCleanup&&!canReacquire&&searchIndex<searchTargets.length&&apexRecentlyScanned(job,searchTargets[searchIndex])&&skipped++<searchTargets.length)searchIndex++;
-          if(searchIndex>=searchTargets.length){searchTargets=apexSearchTargets(true);searchWide=true;searchIndex=searchTargets.findIndex(p=>!apexRecentlyScanned(job,p));if(searchIndex<0){searchIndex=searchTargets.length;release();apexStatus.textContent='Nearby search floor was just scanned. Watching for fresh Apex sightings.';await wait(500);continue;}}
+          if(searchIndex>=searchTargets.length){searchTargets=apexSearchTargets(true);searchWide=true;searchIndex=searchTargets.findIndex(p=>!apexRecentlyScanned(job,p));if(searchIndex<0){searchIndex=searchTargets.length;release();apexStatus.textContent='Nearby search floor was just scanned. Watching for fresh Apex sightings.';await apexLoadoutWait(500,token,true);continue;}}
           let target=searchTargets[searchIndex%searchTargets.length];
           let reacquiring=false;
           if(canReacquire){
@@ -1374,7 +1376,7 @@
             if(segmentCleanup)apexStatus.textContent+=' Checking for remaining centipede body segments before looting.';
           }
           if(apexViewCoverage(job)?.centerMayBeBeyondView)apexStatus.textContent+=' · The Apex center may be beyond the current Antennae view at this border gap.';
-          if(await apexNavigate(target,job,token)){if(['world','snapshot'].includes(job.navigateOutcome)){await wait(50);continue;}if(!['found','zone','view','snapshot','screen','stopped'].includes(job.navigateOutcome)){if(reacquiring)job.reacquire.index++;else searchIndex++;}searchFailures=0;if(job.zoneEntered&&!arrived){job.zoneTravelMs=Date.now()-tripBegan;arrived=true;}if(job.zoneEntered&&!dps){dps=job.preset===3||await selectLoadout(3,token);if(dps)alt('keydown');}await wait(200);}else{if(scene()==='play'&&++searchFailures>=2){if(segmentCleanup&&job.segmentSweep)job.segmentSweep.blocked++;if(reacquiring)job.reacquire.index++;else searchIndex++;searchFailures=0;apexStatus.textContent='Search point blocked. Trying another reachable area.';}await wait(200);}continue;
+          if(await apexNavigate(target,job,token)){if(['world','snapshot'].includes(job.navigateOutcome)){await wait(50);continue;}if(!['found','zone','view','snapshot','screen','stopped'].includes(job.navigateOutcome)){if(reacquiring)job.reacquire.index++;else searchIndex++;}searchFailures=0;if(job.zoneEntered&&!arrived){job.zoneTravelMs=Date.now()-tripBegan;arrived=true;}if(job.zoneEntered&&!dps){dps=job.preset===3||await selectLoadout(3,token);if(dps)alt('keydown');}await apexLoadoutWait(200,token,true);}else{if(scene()==='play'&&++searchFailures>=2){if(segmentCleanup&&job.segmentSweep)job.segmentSweep.blocked++;if(reacquiring)job.reacquire.index++;else searchIndex++;searchFailures=0;apexStatus.textContent='Search point blocked. Trying another reachable area.';}await apexLoadoutWait(200,token,true);}continue;
         }
         job.reacquire=null;
         if(!job.engagedThisLife){job.travelMs=Date.now()-tripBegan;job.engagedThisLife=true;}
@@ -1818,7 +1820,7 @@
     return result;
   }
   async function navigateGarden(path,token,farming){
-    route=path.slice();const finalGoal=mapping.toWorld(route[route.length-1]);let last=position(),stuckAt=Date.now(),stuckPos=last,segmentFrom=last,progressDistance=Infinity,progressTarget=null,heading=null,lastTick=performance.now(),measuredSpeed=300,lastAvoidanceCheck=-Infinity;
+    route=path.slice();const finalGoal=mapping.toWorld(route[route.length-1]),routePreset=apex.active?.preset;let last=position(),stuckAt=Date.now(),stuckPos=last,segmentFrom=last,progressDistance=Infinity,progressTarget=null,heading=null,lastTick=performance.now(),measuredSpeed=300,lastAvoidanceCheck=-Infinity;
     if(route.length>1&&distance(last,mapping.toWorld(route[0]))<75)route.shift();
     while(running&&token===version){
       if(apex.active?.lootDeadline&&phase==='Apex loot'&&Date.now()>=apex.active.lootDeadline){release();return 'loot-timeout';}
@@ -1829,6 +1831,8 @@
       if(farming&&apexEnabled.checked&&apex.queue.length&&!apex.active){release();return 'apex';}
       if(scene()!=='play'){release();return 'screen';}if(realmMismatch()){release();await returnToSpawnMenu(token);return 'screen';}if(!await liveGate(token))return 'stopped';
       if(!await ensureExpectedLoadout(token)){release();await wait(100);continue;}
+      if(apex.active)apexTravelAttack(apex.active);
+      if(apex.active?.preset!==routePreset){release();return 'build';}
       if(!pos||Date.now()-pos.updatedAt>1800){release();await preparePosition(token);const p=await freshPosition(token);if(!p)return 'screen';last=p;stuckPos=p;stuckAt=Date.now();}
       const p=position(),mp=mapping.toMap(p),now=performance.now(),dt=Math.max(.025,(now-lastTick)/1000);lastTick=now;
       if(apex.active&&phase==='searching Apex Ultra+ zone'&&!apex.active.zoneEntered&&apexInUltraZone()){apex.active.zoneEntered=true;release();return 'zone';}
