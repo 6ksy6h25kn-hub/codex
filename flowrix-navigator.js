@@ -1058,7 +1058,7 @@
   function savedPresetKey(number){return 10+(Number(number)+9)%10;}
   function apexSelectedPreset(number){
     const job=apex.active;if(!job)return;
-    job.searchPetal=false;job.viewScale=null;if(job.preset!==number){job.movementSpeed=300;job.hazard=null;job.standTarget=null;}job.preset=number;
+    job.searchPetal=false;job.viewScale=null;if(job.preset!==number){job.movementSpeed=300;job.hazard=null;job.standTarget=null;job.lastBlockedMove=null;}job.preset=number;
   }
   async function selectLoadout(number,token){
     if(running&&token===version&&scene()==='play'&&expectedLoadout?.number===number&&networkLifeTotals?.id===expectedLoadout.account&&Date.now()-networkLifeTotals.receivedAt<3000&&loadoutMatches(networkLifeTotals.equipped,networkLifeTotals.savedLoadouts?.[savedPresetKey(number)]||[])){expectedLoadout={number,account:networkLifeTotals.id,slots:networkLifeTotals.equipped.map(p=>({...p})),swaps:[]};lastLoadoutCheck=Date.now();if(apex.active?.preset!==number)apexSelectedPreset(number);return true;}
@@ -1075,7 +1075,7 @@
     release();alt('keyup');if(!await liveGate(token)||scene()!=='play')return false;
     const valid=()=>running&&token===version&&scene()==='play'&&inputAllowed();
     send('keydown','l');await apexLoadoutWait(100,token);if(!valid()){send('keyup','l');return false;}
-    send('keydown',String(number));await apexLoadoutWait(100,token);send('keyup',String(number));if(!valid()){send('keyup','l');return false;}
+    send('keydown',String(number));if(number===2)apexSelectedPreset(2);await apexLoadoutWait(100,token);send('keyup',String(number));if(!valid()){send('keyup','l');return false;}
     await apexLoadoutWait(60,token);send('keyup','l');if(!valid())return false;await apexLoadoutWait(40,token);if(valid())apexSelectedPreset(number);return valid();
   }
   function mapFile(name){if(name==='Jellyfish zone')return 'ocean';return name.endsWith('Ant Hell')?'ant_hell':name.toLowerCase();}
@@ -1228,25 +1228,18 @@
     if(apex.active?.preset!==3||!pos||Date.now()-serverWorld.updatedAt>1000)return [];
     return [...serverWorld.entities.values()].filter(e=>(e.kind===1||e.kind===6)&&e.rarity<9&&e.hp>0&&!String(apexMobType(e)||'').endsWith('_pet')&&Number.isFinite(e.x)&&Number.isFinite(e.y)&&distance(pos,e)<6000+(e.radius||0));
   }
-  function apexAvoidanceRadius(e){
-    const level=apexApproachLevel();return (e.radius||20)+[180,120,80][level]+apexHealthGuard()/(level+1)+(apexMotionFresh(e)?Math.min([200,120,80][level],Math.hypot(e.vx||0,e.vy||0)*.2):0);
-  }
-  function apexAvoidanceCenters(e){
-    const moving=apexMotionFresh(e),vx=moving?e.vx||0:0,vy=moving?e.vy||0:0,speed=Math.hypot(vx,vy),ahead=speed?Math.min(.35,500/speed):0,steps=Math.max(1,Math.ceil(speed*ahead/Math.max(60,apexAvoidanceRadius(e)*.5))),centers=[];
-    for(let i=0;i<=steps;i++){const t=ahead*i/steps;centers.push({x:e.x+vx*t,y:e.y+vy*t});}return centers;
-  }
+  // Ordinary-mob clearance is always 20 world units: no health, speed or caution additions.
+  function apexAvoidanceRadius(e){return Math.max(0,Number(e.radius)||0)+20;}
   function apexAvoidanceMask(base=null){
     if(!gardenReady||!mapping||!pos)return base;const threats=apexAvoidanceThreats();if(!threats.length)return base;
     const mask=base?base.slice():new Uint8Array(gardenOpen.length).fill(1);
-    for(const e of threats){const radius=apexAvoidanceRadius(e);
-      for(const center of apexAvoidanceCenters(e))apexBlockCircle(mask,center,radius);
-    }return mask;
+    for(const e of threats)apexBlockCircle(mask,e,apexAvoidanceRadius(e));return mask;
   }
   function apexTravelMask(){return apex.active?.preset===2||!gardenReady||!mapping?null:apexAvoidanceMask(apexSafetyMask(apex.active));}
   function apexSegmentClear(job,from,to){
     if(!apexTerrainExitClear(grid(),from,to))return false;if(job?.preset===2)return true;const dx=to.x-from.x,dy=to.y-from.y,length=dx*dx+dy*dy;
     const clear=(e,radius,required=0)=>{const t=Math.max(0,Math.min(1,((e.x-from.x)*dx+(e.y-from.y)*dy)/(length||1))),closest=Math.hypot(from.x+dx*t-e.x,from.y+dy*t-e.y),initial=distance(from,e);if(initial>=required&&closest<required)return false;return initial<radius?closest>=initial-1&&distance(to,e)>initial+1:closest>=radius-.01;};
-    return apexSafetyBosses(job).every(b=>clear(b,apexStandRadius({lastBoss:b}),(b.radius||0)+apexGap()+apexHealthGuard()))&&apexAvoidanceThreats().every(e=>apexAvoidanceCenters(e).every(center=>clear(center,apexAvoidanceRadius(e))));
+    return apexSafetyBosses(job).every(b=>clear(b,apexStandRadius({lastBoss:b}),(b.radius||0)+apexGap()+apexHealthGuard()))&&apexAvoidanceThreats().every(e=>clear(e,apexAvoidanceRadius(e)));
   }
   function apexApproachPath(job,from,to,allowed){
     if(apexSegmentClear(job,from,to))return [mapping.toMap(from),mapping.toMap(to)];

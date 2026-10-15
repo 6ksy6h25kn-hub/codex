@@ -398,5 +398,34 @@
       "L3 simulated loot pickup without projectile detours",
       "Full existing regression suite"
     ]
+  },
+  "latestTwentyUnitMobGapRegression": {
+    "date": "2026-10-14",
+    "timezone": "America/New_York",
+    "command": "npm test",
+    "passed": 82,
+    "failed": 0,
+    "skipped": 0,
+    "sourceSha256": "d41c1107a0f7779487a393a420f9b82315a8850ab151e07f2cda10e78c310b0f",
+    "liveServerTest": false,
+    "normalDamageSurvivalEstablished": false,
+    "ordinaryMobBorderGapUnits": 20,
+    "ordinaryMobHealthOrSpeedAdditions": false,
+    "ordinaryMobPredictedRouteReservation": false,
+    "L2MobAvoidance": false,
+    "projectileAvoidance": false,
+    "ApexStandOffSettingChanged": false,
+    "L2TransitionReproduction": {
+      "beforeFixDodgeSlicesAfterL2Digit": 5,
+      "afterFixDodgeSlicesAfterL2Digit": 0
+    },
+    "checks": [
+      "20-unit margin across HP, speed and caution levels",
+      "Straight L3 travel at a measured 20-unit mob-border gap",
+      "DPS approach passes an ordinary mob at 20 units and reaches Apex range",
+      "L2 selection immediately disables avoidance during remaining key waits",
+      "Existing L2 direct travel and loot, cached L2, L3 attacks and projectile exclusion",
+      "Full existing regression suite"
+    ]
   }
 }

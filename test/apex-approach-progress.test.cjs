@@ -28,7 +28,7 @@ async function fixture(check){
      const result=await apexNavigate({x:7300,y:5000},job,token);running=false;return {result,outcome:job.navigateOutcome,minBorder,moved:pos.x-1000,steps};
     },
     approach(crowded){
-     const job=approachFixture(crowded);running=true;const start=position();let minBorder=Infinity,maxIdle=0,idle=0,reached=false,steps=0;
+     const job=approachFixture(crowded===true);if(crowded==='twenty')serverWorld.entities.set(1,{id:1,kind:1,type:1,rarity:6,x:4000,y:5270,radius:250,hp:1,vx:0,vy:0,at:Date.now(),poseAt:Date.now()});running=true;const start=position();let minBorder=Infinity,maxIdle=0,idle=0,reached=false,steps=0;
      for(;steps<600;steps++){
       if(typeof apexTrackApproach==='function')apexTrackApproach(job);
       const stand=apexStandPoint(job);let keys=[];
@@ -62,21 +62,25 @@ async function fixture(check){
 }
 
 test('Overlapping mob comfort buffers cannot seal a corridor with a physically clear route to the Apex',async()=>fixture(async p=>{
- const r=await p.evaluate(()=>approachTest.crowdedRoute());assert(r.result,JSON.stringify(r));assert.equal(r.outcome,'arrived');assert(r.moved>6000);assert(r.minBorder>=80,JSON.stringify(r));
+ const r=await p.evaluate(()=>approachTest.crowdedRoute());assert(r.result,JSON.stringify(r));assert.equal(r.outcome,'arrived');assert(r.moved>6000);assert(r.minBorder>=20,JSON.stringify(r));
 }));
 test('A visible Apex can be approached to attack distance instead of stopping at a coarse grid stand-off',async()=>fixture(async p=>{
  const r=await p.evaluate(()=>approachTest.approach(false));assert(r.reached,JSON.stringify(r));assert(r.gap>=100);assert(r.maxIdle<30);
 }));
 test('DPS approach routes through crowding and reaches the Apex while preserving mob and Apex clearance',async()=>fixture(async p=>{
- const r=await p.evaluate(()=>approachTest.approach(true));assert(r.reached,JSON.stringify(r));assert(r.minBorder>=80,JSON.stringify(r));assert(r.gap>=100);assert(r.maxIdle<60);
+ const r=await p.evaluate(()=>approachTest.approach(true));assert(r.reached,JSON.stringify(r));assert(r.minBorder>=20,JSON.stringify(r));assert(r.gap>=100);assert(r.maxIdle<60);
 }));
 test('A valid far-away attack position stays committed while walking around a wall',async()=>fixture(async p=>{
  const r=await p.evaluate(()=>approachTest.committedGoal());assert(r.first&&r.second);assert.deepEqual(r.second,r.first,'Changing the approach bearing must not move the destination every frame');
 }));
 test('The real L2-to-L3 hunt loop gets past the no-safe-floor wait and reaches an attacking position',async()=>fixture(async p=>{
- const r=await p.evaluate(()=>approachTest.l3Hunt());assert.equal(r.hits,4,JSON.stringify(r));assert.equal(r.completed,1);assert(r.minMobBorder>=80);assert(r.minBossBorder>=100);assert(r.ticks<1200);
+ const r=await p.evaluate(()=>approachTest.l3Hunt());assert.equal(r.hits,4,JSON.stringify(r));assert.equal(r.completed,1);assert(r.minMobBorder>=20);assert(r.minBossBorder>=100);assert(r.ticks<1200);
 }));
 
 test('An L3 hunt attacks route mobs while searching, then acquires and approaches the Apex',async()=>fixture(async p=>{
  const r=await p.evaluate(()=>approachTest.l3Hunt(true));assert.equal(r.trashHits,2,JSON.stringify(r));assert(r.searchMovement>100);assert.equal(r.foldedSearchMovement,0);assert.equal(r.hits,4);assert.equal(r.completed,1);assert(r.minBossBorder>=100);
+}));
+
+test('The DPS approach passes an ordinary mob with only a 20-unit clearance while reaching the Apex',async()=>fixture(async p=>{
+ const r=await p.evaluate(()=>approachTest.approach('twenty'));assert(r.reached,JSON.stringify(r));assert(r.minBorder>=20&&r.minBorder<25,JSON.stringify(r));assert(r.gap>=100);assert(r.maxIdle<30);
 }));

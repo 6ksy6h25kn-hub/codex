@@ -34,18 +34,24 @@ async function fixture(check){
      return {ids,commonBlocked:mask[50*100+20]===0,npcBlocked:mask[50*100+40]===0,petOpen:mask[50*100+50]===1,deadOpen:mask[50*100+55]===1,shotOpen:mask[50*100+60]===1};
     },
     closeEscape(){
-     const job=avoidanceFixture();const e=mob(1,1200,5000,100);serverWorld.entities.set(1,e);
+     const job=avoidanceFixture();const e=mob(1,1110,5000,100);serverWorld.entities.set(1,e);
      const keys=apexSafeKeys(job,['d'],.09,300),dx=Number(keys.includes('d'))-Number(keys.includes('a')),dy=Number(keys.includes('s'))-Number(keys.includes('w')),len=Math.hypot(dx,dy),end={x:pos.x+(len?dx/len*45:0),y:pos.y+(len?dy/len*45:0)};
      const route=apexApproachPath(job,position(),{x:7000,y:5000},apexTravelMask()),first=mapping.toWorld(route[0]);
      return {keys,before:distance(pos,e),after:distance(end,e),canExit:apexSegmentClear(job,position(),first)};
     },
     prediction(){
      const job=avoidanceFixture(),e=mob(1,3000,5500,100);e.vy=-1400;serverWorld.entities.set(1,e);
-     const mask=apexAvoidanceMask(),predictedBlocked=mask[50*100+30]===0,predictedSegmentBlocked=!apexSegmentClear(job,position(),{x:4000,y:5000});e.poseAt=Date.now()-2000;e.at=e.poseAt;const stale=apexAvoidanceMask();
-     e.x=1200;e.y=5000;e.vx=0;e.vy=0;e.poseAt=Date.now();apexSafeKeys(job,['d']);const blocked=apexDiagnostics().hunt.movement.lastBlocked;
+     const mask=apexAvoidanceMask(),currentBlocked=mask[55*100+30]===0,predictedOpen=mask[50*100+30]===1,segmentOpen=apexSegmentClear(job,position(),{x:4000,y:5000});e.poseAt=Date.now()-2000;e.at=e.poseAt;const stale=apexAvoidanceMask();
+     e.x=1110;e.y=5000;e.vx=0;e.vy=0;e.poseAt=Date.now();apexSafeKeys(job,['d']);const blocked=apexDiagnostics().hunt.movement.lastBlocked;
      const shot={...mob(2,1500,5000,20),kind:3,hp:undefined,vx:-3000};serverWorld.entities=new Map([[2,shot]]);
      const shotKeys=apexSafeKeys(job,['d'],.09,300);
-     return {predictedBlocked,predictedSegmentBlocked,staleOpen:stale[50*100+30]===1,shotKeys,blocked};
+     return {currentBlocked,predictedOpen,segmentOpen,staleOpen:stale[50*100+30]===1,shotKeys,blocked};
+    },
+    async l2Selection(){
+     const job=avoidanceFixture();serverWorld.entities.set(1,mob(1,1110,5000,100));networkLifeTotals=null;expectedLoadout=null;running=true;const token=++version;let l2Sent=false,before=0,after=0;game.addEventListener('keydown',e=>{if(e.key==='2')l2Sent=true;});wait=async ms=>{fixtureNow+=ms;pos.updatedAt=Date.now();serverWorld.updatedAt=Date.now();serverWorld.own.at=Date.now();if([...heldKeys].some(k=>['w','a','s','d'].includes(k))){if(l2Sent)after++;else before++;}};const selected=await sendLoadout(2,token);running=false;return {selected,before,after,preset:job.preset};
+    },
+    clearanceRules(){
+     const job=avoidanceFixture(),results=[];for(const hp of [100,20])for(const level of [0,1,2])for(const speed of [0,3000]){serverWorld.own.hp=hp;job.approachLevel=level;const e={...mob(1,4000,5000,100),vx:speed};results.push({hp,level,speed,gap:apexAvoidanceRadius(e)-e.radius});}return results;
     },
     projectileRules(){
      const job=avoidanceFixture(),results=[];for(const preset of [2,3,4,5])for(const looting of [false,true])for(const hp of [undefined,1,0]){job.preset=preset;job.dead=looting;phase=looting?'Apex loot':'Apex travel';serverWorld.entities=new Map([[1,{...mob(1,1100,5000,300),kind:3,hp,vx:-3000}]]);results.push({preset,looting,hp,threats:apexAvoidanceThreats().length,keys:apexSafeKeys(job,['d']),mask:apexTravelMask()!==null,segment:apexSegmentClear(job,position(),{x:7000,y:5000})});}return results;
@@ -63,6 +69,7 @@ async function fixture(check){
      if(mode==='cached-loot'){const slots=Array.from({length:20},(_,i)=>({type:i,rarity:6}));networkLifeTotals={id:'fixture',receivedAt:Date.now(),equipped:slots.map(p=>({...p})),savedLoadouts:{11:slots}};expectedLoadout={number:2,account:'fixture',slots:slots.map(p=>({...p})),swaps:[]};await selectLoadout(2,token);}
      if(mode.startsWith('fast')){gardenOpen.fill(0);for(let x=5;x<=45;x++)for(let y=48;y<=52;y++)gardenOpen[y*100+x]=1;for(let x=43;x<=47;x++)for(let y=48;y<=72;y++)gardenOpen[y*100+x]=1;for(let x=43;x<=75;x++)for(let y=68;y<=72;y++)gardenOpen[y*100+x]=1;gridCache=null;destination.y=7000;serverWorld.entities.set(99,{...mob(99,8500,5000,300),rarity:9});serverWorld.entities.delete(1);}
      if(mode==='l2-all'){serverWorld.entities.set(2,{...mob(2,4500,5000,50),kind:3,vx:-1000});serverWorld.entities.set(3,{...mob(3,5000,5000,400),rarity:9});job.lastBoss={...mob(42,3000,5000,300),rarity:9};}
+     if(mode==='twenty'){e.radius=250;e.y=5270;}
      if(mode==='transition'){e.x=4700;serverWorld.entities.set(2,mob(2,2200,5000,350));}
      if(mode==='l3-shot-loot'){e.x=2000;e.kind=3;e.radius=20;e.vx=-1000;}
      if(mode==='incoming-shot'){e.x=2000;e.kind=3;e.radius=20;e.vx=-1000;}
@@ -100,14 +107,14 @@ test('L3 avoidance includes living mobs and NPCs while excluding projectiles, pe
 test('A nearby ordinary mob forces outward escape even before the Apex is visible',async()=>fixture(async p=>{
  const r=await p.evaluate(()=>avoidanceTest.closeEscape());assert(r.keys.length>0&&!r.keys.includes('d'));assert(r.after>r.before);assert(r.canExit,'The route must start with a continuous safe exit from the buffer');
 }));
-test('Fresh mob motion is predicted and recorded, while projectile motion leaves steering unchanged',async()=>fixture(async p=>{
- const r=await p.evaluate(()=>avoidanceTest.prediction());assert(r.predictedBlocked&&r.predictedSegmentBlocked&&r.staleOpen);assert.deepEqual(r.shotKeys,['d']);assert.equal(r.blocked.reason,'mob');assert.equal(r.blocked.entity.kind,1);assert.deepEqual(r.blocked.requested,['d']);assert.equal(r.blocked.ageMs,0);
+test('Mob routes use current body positions without reserving an enlarged predicted path',async()=>fixture(async p=>{
+ const r=await p.evaluate(()=>avoidanceTest.prediction());assert(r.currentBlocked&&r.predictedOpen&&r.segmentOpen&&r.staleOpen);assert.deepEqual(r.shotKeys,['d']);assert.equal(r.blocked.reason,'mob');assert.equal(r.blocked.entity.kind,1);assert.deepEqual(r.blocked.requested,['d']);assert.equal(r.blocked.ageMs,0);
 }));
 test('Apex travel follows an actual detour around a living mob while keeping attacks active toward the Apex',async()=>fixture(async p=>{
- const r=await p.evaluate(()=>avoidanceTest.journey('static'));assert(r.result,JSON.stringify(r));assert.equal(r.outcome,'arrived');assert(r.moved>5500);assert(r.goalDistance<200);assert(r.minGap>=180,JSON.stringify(r));assert(r.pressed.includes(' '));assert.equal(r.foldedL3Movement,0);assert(r.l3MovementTicks>100);assert.equal(r.preset,3);
+ const r=await p.evaluate(()=>avoidanceTest.journey('static'));assert(r.result,JSON.stringify(r));assert.equal(r.outcome,'arrived');assert(r.moved>5500);assert(r.goalDistance<200);assert(r.minGap>=20,JSON.stringify(r));assert(r.pressed.includes(' '));assert.equal(r.foldedL3Movement,0);assert(r.l3MovementTicks>100);assert.equal(r.preset,3);
 }));
 test('A mob entering an existing route triggers a detour while preserving the Apex destination',async()=>fixture(async p=>{
- const r=await p.evaluate(()=>avoidanceTest.journey('moving'));assert(r.result,JSON.stringify(r));assert(r.replans>0);assert(r.goalDistance<200);assert(r.minGap>=180,JSON.stringify(r));assert(r.pressed.includes(' '));assert.equal(r.foldedL3Movement,0);
+ const r=await p.evaluate(()=>avoidanceTest.journey('moving'));assert(r.result,JSON.stringify(r));assert(r.replans>0);assert(r.goalDistance<200);assert(r.minGap>=20,JSON.stringify(r));assert(r.pressed.includes(' '));assert.equal(r.foldedL3Movement,0);
 }));
 test('L2 travels straight through weak mobs without ordinary-mob avoidance even inside Ultra',async()=>fixture(async p=>{
  const r=await p.evaluate(()=>avoidanceTest.journey('l2'));assert(r.result,JSON.stringify(r));assert.equal(r.preset,2);assert.equal(r.maxSideStep,0);assert.equal(r.replans,0);assert(r.goalDistance<200);assert(!r.pressed.includes(' '));
@@ -119,7 +126,7 @@ test('A corridor blocked by a mob cannot be crossed by dropping the avoidance ma
  const r=await p.evaluate(()=>avoidanceTest.journey('corridor'));assert.equal(r.result,false);assert.equal(r.outcome,'blocked');assert.equal(r.moved,0);assert(r.pressed.includes(' '));
 }));
 test('A route starting inside a mob comfort buffer escapes and resumes instead of endlessly replanning',async()=>fixture(async p=>{
- const r=await p.evaluate(()=>avoidanceTest.journey('close'));assert(r.result,JSON.stringify(r));assert(r.goalDistance<200);assert(r.minGap>=80,JSON.stringify(r));
+ const r=await p.evaluate(()=>avoidanceTest.journey('close'));assert(r.result,JSON.stringify(r));assert(r.goalDistance<200);assert(r.minGap>=20,JSON.stringify(r));
 }));
 
 test('Fast L2 travel negotiates narrow route corners without getting stuck before the Apex',async()=>fixture(async p=>{
@@ -143,7 +150,7 @@ test('L2 keeps a straight terrain route through ordinary mobs, projectiles and r
 }));
 
 test('Changing from L2 to L3 on an existing route enables attacks and detours without losing the destination',async()=>fixture(async p=>{
- const r=await p.evaluate(()=>avoidanceTest.journey('transition'));assert(r.result,JSON.stringify(r));assert(r.transitioned);assert.equal(r.outcome,'arrived');assert(r.maxSideStep>400);assert(r.minGap>=180);assert.equal(r.l2AttackTicks,0);assert.equal(r.foldedL3Movement,0);assert(r.l3MovementTicks>0);assert(r.goalDistance<200);
+ const r=await p.evaluate(()=>avoidanceTest.journey('transition'));assert(r.result,JSON.stringify(r));assert(r.transitioned);assert.equal(r.outcome,'arrived');assert(r.maxSideStep>400);assert(r.minGap>=20);assert.equal(r.l2AttackTicks,0);assert.equal(r.foldedL3Movement,0);assert(r.l3MovementTicks>0);assert(r.goalDistance<200);
 }));
 
 test('Changing back from L3 to L2 drops the old mob detour and folds attacks',async()=>fixture(async p=>{
@@ -160,4 +167,16 @@ test('Projectiles never change steering or block routes in any build or during l
 
 test('L3 reaches loot directly without projectile detours',async()=>fixture(async p=>{
  const r=await p.evaluate(()=>avoidanceTest.journey('l3-shot-loot'));assert(r.result,JSON.stringify(r));assert.equal(r.preset,3);assert.equal(r.outcome,'arrived');assert(r.lootCollected);assert.equal(r.maxSideStep,0);assert.equal(r.replans,0);
+}));
+
+test('Ordinary-mob clearance stays at 20 units at low HP, high speed and every caution level',async()=>fixture(async p=>{
+ const cases=await p.evaluate(()=>avoidanceTest.clearanceRules());assert.equal(cases.length,12);for(const r of cases)assert.equal(r.gap,20,JSON.stringify(r));
+}));
+
+test('L3 travel passes a mob at a 20-unit border gap without a larger detour',async()=>fixture(async p=>{
+ const r=await p.evaluate(()=>avoidanceTest.journey('twenty'));assert(r.result,JSON.stringify(r));assert.equal(r.outcome,'arrived');assert.equal(r.maxSideStep,0);assert.equal(r.replans,0);assert(r.minGap>=20&&r.minGap<21,JSON.stringify(r));assert.equal(r.foldedL3Movement,0);
+}));
+
+test('Sending L2 immediately disables mob dodges during the remaining loadout-key waits',async()=>fixture(async p=>{
+ const r=await p.evaluate(()=>avoidanceTest.l2Selection());assert(r.selected);assert(r.before>0);assert.equal(r.after,0,JSON.stringify(r));assert.equal(r.preset,2);
 }));
