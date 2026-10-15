@@ -31,7 +31,7 @@ async function fixture(check){
       [7,{...mob(7,6500,5000),rarity:9}]
      ]);
      const ids=apexAvoidanceThreats().map(e=>e.id),mask=apexAvoidanceMask();
-     return {ids,commonBlocked:mask[50*100+20]===0,npcBlocked:mask[50*100+40]===0,petOpen:mask[50*100+50]===1,deadOpen:mask[50*100+55]===1};
+     return {ids,commonBlocked:mask[50*100+20]===0,npcBlocked:mask[50*100+40]===0,petOpen:mask[50*100+50]===1,deadOpen:mask[50*100+55]===1,shotOpen:mask[50*100+60]===1};
     },
     closeEscape(){
      const job=avoidanceFixture();const e=mob(1,1200,5000,100);serverWorld.entities.set(1,e);
@@ -42,9 +42,13 @@ async function fixture(check){
     prediction(){
      const job=avoidanceFixture(),e=mob(1,3000,5500,100);e.vy=-1400;serverWorld.entities.set(1,e);
      const mask=apexAvoidanceMask(),predictedBlocked=mask[50*100+30]===0,predictedSegmentBlocked=!apexSegmentClear(job,position(),{x:4000,y:5000});e.poseAt=Date.now()-2000;e.at=e.poseAt;const stale=apexAvoidanceMask();
+     e.x=1200;e.y=5000;e.vx=0;e.vy=0;e.poseAt=Date.now();apexSafeKeys(job,['d']);const blocked=apexDiagnostics().hunt.movement.lastBlocked;
      const shot={...mob(2,1500,5000,20),kind:3,hp:undefined,vx:-3000};serverWorld.entities=new Map([[2,shot]]);
      const shotKeys=apexSafeKeys(job,['d'],.09,300);
-     return {predictedBlocked,predictedSegmentBlocked,staleOpen:stale[50*100+30]===1,shotKeys,blocked:apexDiagnostics().hunt.movement.lastBlocked};
+     return {predictedBlocked,predictedSegmentBlocked,staleOpen:stale[50*100+30]===1,shotKeys,blocked};
+    },
+    projectileRules(){
+     const job=avoidanceFixture(),results=[];for(const preset of [2,3,4,5])for(const looting of [false,true])for(const hp of [undefined,1,0]){job.preset=preset;job.dead=looting;phase=looting?'Apex loot':'Apex travel';serverWorld.entities=new Map([[1,{...mob(1,1100,5000,300),kind:3,hp,vx:-3000}]]);results.push({preset,looting,hp,threats:apexAvoidanceThreats().length,keys:apexSafeKeys(job,['d']),mask:apexTravelMask()!==null,segment:apexSegmentClear(job,position(),{x:7000,y:5000})});}return results;
     },
     scope(){
      const job=avoidanceFixture();serverWorld.entities.set(1,mob(1,2000,5000));
@@ -52,16 +56,21 @@ async function fixture(check){
      return {ultraL3,ultraL2,outsideL3};
     },
     async journey(mode,travelSpeed=300){
-     const job=avoidanceFixture();if(['l2','l2-all','transition','fast','receding-shot'].includes(mode))job.preset=2;running=true;const token=++version,destination={x:7000,y:5000},e=mob(1,mode==='close'?1200:4000,mode==='moving'?7500:5000,mode==='close'?100:350);serverWorld.entities.set(1,e);
+     const looting=mode.endsWith('-loot');let lootCollected=false;
+     const job=avoidanceFixture();if(['l2','l2-all','l2-loot','transition','fast','receding-shot'].includes(mode))job.preset=2;running=true;const token=++version,destination={x:7000,y:5000},e=mob(1,mode==='close'?1200:4000,mode==='moving'?7500:5000,mode==='close'?100:350);serverWorld.entities.set(1,e);
+     if(looting){job.dead=true;job.lootDeadline=Date.now()+90000;phase='Apex loot';serverWorld.entities.set(50,{id:50,kind:4,x:7000,y:5000,radius:20});}
+     if(mode==='cached-loot'||mode==='l2-loot'){gardenOpen.fill(0);for(let x=5;x<=90;x++)for(let y=48;y<=52;y++)gardenOpen[y*100+x]=1;gridCache=null;serverWorld.entities.set(2,{...mob(2,4500,5000,50),kind:3,vx:-1000});serverWorld.entities.set(3,{...mob(3,5000,5000,400),rarity:9});job.lastBoss={...mob(42,7000,5000,300),rarity:9,hp:0};}
+     if(mode==='cached-loot'){const slots=Array.from({length:20},(_,i)=>({type:i,rarity:6}));networkLifeTotals={id:'fixture',receivedAt:Date.now(),equipped:slots.map(p=>({...p})),savedLoadouts:{11:slots}};expectedLoadout={number:2,account:'fixture',slots:slots.map(p=>({...p})),swaps:[]};await selectLoadout(2,token);}
      if(mode.startsWith('fast')){gardenOpen.fill(0);for(let x=5;x<=45;x++)for(let y=48;y<=52;y++)gardenOpen[y*100+x]=1;for(let x=43;x<=47;x++)for(let y=48;y<=72;y++)gardenOpen[y*100+x]=1;for(let x=43;x<=75;x++)for(let y=68;y<=72;y++)gardenOpen[y*100+x]=1;gridCache=null;destination.y=7000;serverWorld.entities.set(99,{...mob(99,8500,5000,300),rarity:9});serverWorld.entities.delete(1);}
      if(mode==='l2-all'){serverWorld.entities.set(2,{...mob(2,4500,5000,50),kind:3,vx:-1000});serverWorld.entities.set(3,{...mob(3,5000,5000,400),rarity:9});job.lastBoss={...mob(42,3000,5000,300),rarity:9};}
      if(mode==='transition'){e.x=4700;serverWorld.entities.set(2,mob(2,2200,5000,350));}
+     if(mode==='l3-shot-loot'){e.x=2000;e.kind=3;e.radius=20;e.vx=-1000;}
      if(mode==='incoming-shot'){e.x=2000;e.kind=3;e.radius=20;e.vx=-1000;}
      if(mode==='receding-shot'){e.x=3000;e.kind=3;e.radius=20;e.vx=800;gardenOpen.fill(0);for(let x=5;x<=90;x++)for(let y=48;y<=52;y++)gardenOpen[y*100+x]=1;gridCache=null;}
      if(mode==='corridor'){gardenOpen.fill(0);for(let x=5;x<90;x++)gardenOpen[50*100+x]=1;gridCache=null;}
      const pressed=[];let attackHeld=false;game.addEventListener('keydown',event=>{pressed.push(event.key);if(event.key===' ')attackHeld=true;});game.addEventListener('keyup',event=>{if(event.key===' ')attackHeld=false;});let ticks=0,minGap=Infinity,mobInserted=false,maxSideStep=0,wallContacts=0,l3MovementTicks=0,foldedL3Movement=0,l2AttackTicks=0,transitioned=false,sideAtSwitch=null,sideAfterSwitch=0;
      wait=async ms=>{fixtureNow+=Math.max(1,ms);ticks++;
-      if(mode==='receding-shot'||mode==='incoming-shot'){e.x+=e.vx*ms/1000;e.poseAt=Date.now();e.at=Date.now();}
+      if(['receding-shot','incoming-shot','l3-shot-loot'].includes(mode)){e.x+=e.vx*ms/1000;e.poseAt=Date.now();e.at=Date.now();}
       if(mode==='moving'&&!mobInserted&&ticks>=20){e.y=5000;e.poseAt=Date.now();e.at=Date.now();mobInserted=true;}
       const dx=Number(heldKeys.has('d'))-Number(heldKeys.has('a')),dy=Number(heldKeys.has('s'))-Number(heldKeys.has('w')),len=Math.hypot(dx,dy);
       if(job.preset===2&&attackHeld)l2AttackTicks++;if(len&&job.preset===3){l3MovementTicks++;if(!attackHeld)foldedL3Movement++;}
@@ -69,13 +78,14 @@ async function fixture(check){
       pos.updatedAt=Date.now();serverWorld.updatedAt=Date.now();serverWorld.own.at=Date.now();
       minGap=Math.min(minGap,distance(pos,e)-e.radius);
       maxSideStep=Math.max(maxSideStep,Math.abs(pos.y-5000));
+      if(looting&&distance(pos,destination)<80){lootCollected=true;serverWorld.entities.delete(50);}
       if(mode==='reverse-transition'&&!transitioned&&Math.abs(pos.y-5000)>=250){job.preset=2;transitioned=true;sideAtSwitch=Math.abs(pos.y-5000);}
       if(mode==='reverse-transition'&&transitioned)sideAfterSwitch=Math.max(sideAfterSwitch,Math.abs(pos.y-5000));
       if(mode==='transition'&&pos.x>=3200&&job.preset===2){job.preset=3;transitioned=true;}
       if(ticks>2500){running=false;throw Error('Avoidance did not finish');}
      };
-     const origin=position(),result=await apexNavigate(destination,job,token),outcome=job.navigateOutcome;running=false;
-     return {result,outcome,minGap,maxSideStep,goalDistance:distance(pos,destination),moved:distance(origin,pos),pressed,preset:job.preset,position:position(),wallContacts,ticks,l3MovementTicks,foldedL3Movement,l2AttackTicks,transitioned,sideAtSwitch,sideAfterSwitch,replans:job.avoidanceReplans||0};
+     const origin=position(),result=await apexNavigate(destination,job,token,looting),outcome=job.navigateOutcome;running=false;
+     return {result,outcome,minGap,maxSideStep,goalDistance:distance(pos,destination),moved:distance(origin,pos),pressed,preset:job.preset,position:position(),wallContacts,ticks,lootCollected,l3MovementTicks,foldedL3Movement,l2AttackTicks,transitioned,sideAtSwitch,sideAfterSwitch,replans:job.avoidanceReplans||0};
     }
    };
   `;
@@ -84,14 +94,14 @@ async function fixture(check){
  }finally{await browser.close();await new Promise(r=>server.close(r));}
 }
 
-test('Apex avoidance includes Common mobs, hostile NPCs and projectiles without HP fields',async()=>fixture(async p=>{
- const r=await p.evaluate(()=>avoidanceTest.categories());assert.deepEqual(r.ids,[1,2,3,6]);assert(r.commonBlocked&&r.npcBlocked&&r.petOpen&&r.deadOpen);
+test('L3 avoidance includes living mobs and NPCs while excluding projectiles, pets and dead mobs',async()=>fixture(async p=>{
+ const r=await p.evaluate(()=>avoidanceTest.categories());assert.deepEqual(r.ids,[1,2,3]);assert(r.commonBlocked&&r.npcBlocked&&r.petOpen&&r.deadOpen&&r.shotOpen);
 }));
 test('A nearby ordinary mob forces outward escape even before the Apex is visible',async()=>fixture(async p=>{
  const r=await p.evaluate(()=>avoidanceTest.closeEscape());assert(r.keys.length>0&&!r.keys.includes('d'));assert(r.after>r.before);assert(r.canExit,'The route must start with a continuous safe exit from the buffer');
 }));
-test('Fresh mob motion is predicted and projectiles without HP cannot be ignored',async()=>fixture(async p=>{
- const r=await p.evaluate(()=>avoidanceTest.prediction());assert(r.predictedBlocked&&r.predictedSegmentBlocked&&r.staleOpen);assert(!r.shotKeys.includes('d'));assert.equal(r.blocked.reason,'projectile');assert.equal(r.blocked.entity.kind,3);assert.deepEqual(r.blocked.requested,['d']);assert.equal(r.blocked.ageMs,0);
+test('Fresh mob motion is predicted and recorded, while projectile motion leaves steering unchanged',async()=>fixture(async p=>{
+ const r=await p.evaluate(()=>avoidanceTest.prediction());assert(r.predictedBlocked&&r.predictedSegmentBlocked&&r.staleOpen);assert.deepEqual(r.shotKeys,['d']);assert.equal(r.blocked.reason,'mob');assert.equal(r.blocked.entity.kind,1);assert.deepEqual(r.blocked.requested,['d']);assert.equal(r.blocked.ageMs,0);
 }));
 test('Apex travel follows an actual detour around a living mob while keeping attacks active toward the Apex',async()=>fixture(async p=>{
  const r=await p.evaluate(()=>avoidanceTest.journey('static'));assert(r.result,JSON.stringify(r));assert.equal(r.outcome,'arrived');assert(r.moved>5500);assert(r.goalDistance<200);assert(r.minGap>=180,JSON.stringify(r));assert(r.pressed.includes(' '));assert.equal(r.foldedL3Movement,0);assert(r.l3MovementTicks>100);assert.equal(r.preset,3);
@@ -120,8 +130,8 @@ test('A receding projectile does not seal an otherwise clear travel corridor',as
  const r=await p.evaluate(()=>avoidanceTest.journey('receding-shot'));assert(r.result,JSON.stringify(r));assert.equal(r.outcome,'arrived');assert(r.goalDistance<200);assert(r.minGap>=100);
 }));
 
-test('An incoming projectile is dodged locally and travel resumes without body contact',async()=>fixture(async p=>{
- const r=await p.evaluate(()=>avoidanceTest.journey('incoming-shot'));assert(r.result,JSON.stringify(r));assert(r.minGap>=40,JSON.stringify(r));assert(r.maxSideStep>60);assert(r.goalDistance<200);
+test('L3 travels directly toward its destination without dodging an incoming projectile',async()=>fixture(async p=>{
+ const r=await p.evaluate(()=>avoidanceTest.journey('incoming-shot'));assert(r.result,JSON.stringify(r));assert.equal(r.maxSideStep,0);assert.equal(r.replans,0);assert(r.goalDistance<200);
 }));
 
 for(const [mode,speed] of [['fast',900],['fast-l3',900],['fast-l3',2400]])test('Narrow corner travel in '+(mode==='fast'?'L2':'L3')+' at '+speed+' units per second keeps every turn',async()=>fixture(async p=>{
@@ -138,4 +148,16 @@ test('Changing from L2 to L3 on an existing route enables attacks and detours wi
 
 test('Changing back from L3 to L2 drops the old mob detour and folds attacks',async()=>fixture(async p=>{
  const r=await p.evaluate(()=>avoidanceTest.journey('reverse-transition'));assert(r.result,JSON.stringify(r));assert(r.transitioned);assert.equal(r.outcome,'arrived');assert.equal(r.preset,2);assert.equal(r.l2AttackTicks,0);assert(r.sideAfterSwitch<=r.sideAtSwitch+1,JSON.stringify(r));assert(r.goalDistance<200);
+}));
+
+for(const mode of ['l2-loot','cached-loot'])test('L2 collects loot through mobs and projectiles: '+mode,async()=>fixture(async p=>{
+ const r=await p.evaluate(mode=>avoidanceTest.journey(mode),mode);assert(r.result,JSON.stringify(r));assert.equal(r.preset,2);assert.equal(r.outcome,'arrived');assert(r.lootCollected);assert.equal(r.maxSideStep,0);assert.equal(r.replans,0);
+}));
+
+test('Projectiles never change steering or block routes in any build or during loot',async()=>fixture(async p=>{
+ const cases=await p.evaluate(()=>avoidanceTest.projectileRules());assert.equal(cases.length,24);for(const r of cases){assert.equal(r.threats,0,JSON.stringify(r));assert.deepEqual(r.keys,['d']);assert.equal(r.mask,false);assert(r.segment);}
+}));
+
+test('L3 reaches loot directly without projectile detours',async()=>fixture(async p=>{
+ const r=await p.evaluate(()=>avoidanceTest.journey('l3-shot-loot'));assert(r.result,JSON.stringify(r));assert.equal(r.preset,3);assert.equal(r.outcome,'arrived');assert(r.lootCollected);assert.equal(r.maxSideStep,0);assert.equal(r.replans,0);
 }));

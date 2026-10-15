@@ -370,5 +370,33 @@
       "Existing full regression suite"
     ],
     "simulatedHuntDamage": true
+  },
+  "latestNoProjectileLootRegression": {
+    "date": "2026-10-14",
+    "timezone": "America/New_York",
+    "command": "npm test",
+    "passed": 78,
+    "failed": 0,
+    "skipped": 0,
+    "sourceSha256": "be0a9616a4a63b587921dd18c110bab80389e047bd4d5dd909b318a44035893e",
+    "liveServerTest": false,
+    "liveInventoryPickupEstablished": false,
+    "projectileAvoidance": false,
+    "L2MobAvoidance": false,
+    "L3MobAvoidanceAndAttacks": true,
+    "reproducedBefore": {
+      "case": "Cached confirmed L2 retained L3 job state during a loot route",
+      "movementUnits": 0,
+      "outcome": "blocked",
+      "dropReached": false
+    },
+    "checks": [
+      "Incoming projectile leaves L3 travel steering unchanged",
+      "24 projectile cases spanning builds, health fields and travel/loot phases",
+      "Direct L2 simulated loot pickup through mobs and projectiles",
+      "Cached L2 selection synchronizes the job and reaches simulated loot",
+      "L3 simulated loot pickup without projectile detours",
+      "Full existing regression suite"
+    ]
   }
 }
