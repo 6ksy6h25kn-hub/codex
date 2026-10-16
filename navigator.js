@@ -1597,8 +1597,8 @@
   const shopTiming=element('label','','Interval between purchases (ms): ',shopPage);
   shopTiming.style.cssText='display:block;font-size:12px';
   const shopInterval=element('input','','',shopTiming);
-  shopInterval.type='number';shopInterval.min='5';shopInterval.max='60000';shopInterval.step='1';
-  shopInterval.value=Number.isFinite(savedShopPrefs?.interval)&&savedShopPrefs.interval>=5&&savedShopPrefs.interval<=60000?String(savedShopPrefs.interval):'500';
+  shopInterval.type='number';shopInterval.min='1';shopInterval.max='60000';shopInterval.step='1';
+  shopInterval.value=Number.isFinite(savedShopPrefs?.interval)&&savedShopPrefs.interval>=1&&savedShopPrefs.interval<=60000?String(savedShopPrefs.interval):'500';
   shopInterval.style.cssText='width:100%;margin:5px 0 8px';
   function saveShopPrefs(){
     try{localStorage.setItem(shopPrefsKey,JSON.stringify({slot:shopSelected,interval:Number(shopInterval.value)}));}catch{}
@@ -1824,7 +1824,7 @@
   function shopStart(){
     if(shopRunning)return;
     const ms=Number(shopInterval.value);
-    if(!Number.isInteger(ms)||ms<5||ms>60000){shopStatus.textContent='Enter an interval between 5 and 60,000 milliseconds.';return;}
+    if(!Number.isInteger(ms)||ms<1||ms>60000){shopStatus.textContent='Enter an interval between 1 and 60,000 milliseconds.';return;}
     if(document.hidden||shopScreen()!=='shop'){
       shopStatus.textContent='Shop buttons not detected. The Shop can already be open; press Check Shop to see what the script detects.';return;
     }
