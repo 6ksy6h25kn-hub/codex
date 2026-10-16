@@ -276,3 +276,11 @@ The submitted recording shows the game selecting Computer, loading into play, im
 Loot accounting now compares total owned petals: inventory plus equipped slots. The old inventory-only comparison counted loadout and reserve swaps as gains, which explains history entries listing many equipped build petals even when no Apex drop was collected. A recent matching Apex sighting is also attached to a defeat announcement when the active job has lost its live entity, preserving a corpse coordinate for the loot trip when available.
 
 Validation: `npm test` completed with **98 passing tests, zero failures and zero skipped tests**. The new browser regression reproduces a stale Ant Hell realm while Computer loads and confirms that no exit click occurs before the Computer header arrives. The loot regression moves petals between inventory and equipped slots and confirms that only a genuinely added test item is reported. Source SHA-256: `916b4998de82e6a4f006ad5e0a9e39ebce71e705ae88dff1af3f94bf8fb95b1c`. These are controlled browser tests; live Apex pickup remains to be confirmed with this build.
+
+## Ordinary-mob avoidance removed
+
+Build `2026-10-16-no-mob-avoidance` removes ordinary-mob avoidance from Apex search, travel, DPS approach, and loot routes. Both L2 and L3 keep a direct terrain route through normal mobs; L3 still holds its attack inputs while it travels. Ordinary mobs no longer create route masks, movement rejections, detours, or replans.
+
+The separate Apex boss border gap remains active, along with map-wall collision checks. The shop buyer is also included: open the in-game Shop manually, choose offer 1–10 in the script panel, set the interval, then start it. It clicks the selected offer and its confirmation button until stopped.
+
+Validation: `npm test` completed with **64 passing tests, zero failures and zero skipped tests**. The new browser regression places a large ordinary mob directly between the player and destination and confirms that L2 and L3 both retain a two-point direct path and the requested movement key. These are controlled browser tests; no live-account session was used.

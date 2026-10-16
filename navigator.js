@@ -219,7 +219,7 @@
   const spawnControls=element('div','','',panel);spawnControls.style.marginTop='8px';spawnControls.append('Farm map: ');
   spawnSelect=element('select','','',spawnControls);
   const spawnNames=['Default','Garden','Desert','Computer','Ocean','Jungle','Hell','Ant Hell','Sewers','PVP Arena','Maze'];
-  const buttonLabels=new Set(['continue','ready','skip tutorial',...spawnNames.map(s=>s.toLowerCase())]);
+  const buttonLabels=new Set(['continue','ready','skip tutorial','shop','confirm','cancel',...spawnNames.map(s=>s.toLowerCase())]);
   const farmMapNames=spawnNames.flatMap(name=>name==='Ant Hell'?['Normal Ant Hell','Fire Ant Hell','Termite Ant Hell']:name==='Ocean'?['Ocean','Jellyfish zone']:[name]);
   function actualSpawnName(){if(spawnSelect.value==='Jellyfish zone')return 'Ocean';return spawnSelect.value.endsWith('Ant Hell')?'Ant Hell':spawnSelect.value;}
   let apexResumeBuild=false,apexFarmRestorePending=false;
@@ -236,6 +236,7 @@
   backgroundFarm.onchange=()=>saveSettings();
   function inputAllowed(){return autoRecovery.enabled&&backgroundFarm.checked||!document.hidden&&document.hasFocus();}
   const autoRecovery={enabled:false,pending:null,attempts:[],lastReason:null,lastProgress:Date.now(),point:null,phase:null,bossHP:null,generation:0,loopToken:null,hasStarted:false,nextRetryAt:null,events:[]};
+  const shopBuyer={active:false,token:0,offer:1,buys:0};
   function recoveryEvent(reason){autoRecovery.events.unshift({at:Date.now(),reason,context:automationSnapshot()});autoRecovery.events=autoRecovery.events.slice(0,20);}
   function recoveryReason(now=Date.now()){
     if(!autoRecovery.enabled||autoRecovery.pending||capturing||!inputAllowed())return null;
@@ -258,7 +259,7 @@
     autoRecovery.pending=setTimeout(()=>{autoRecovery.pending=null;autoRecovery.nextRetryAt=null;if(!autoRecovery.enabled||autoRecovery.generation!==generation)return;temporaryBlocks.clear();obstacleVersion++;gridCache=null;gardenReady=false;gardenData=null;mapping=null;screenCache=null;frameCache=null;travelLoadoutActive=false;deathLoadoutSwapPending=true;if(apex.active){apex.active.historyStatus='Interrupted by recovery: '+reason;renderApexHistory();apex.active=null;}refreshTextCache();autoRecovery.lastProgress=Date.now();autoRecovery.point=null;void start(true).catch(error=>scheduleRecovery(error.message));},delay);
     return true;
   }
-  function stop(message='Stopped.',preserveRecovery=false) {  if(!preserveRecovery){autoRecovery.enabled=false;autoRecovery.generation++;autoRecovery.nextRetryAt=null;if(autoRecovery.pending){clearTimeout(autoRecovery.pending);autoRecovery.pending=null;}}if(apex.active?.savedFarm&&spawnSelect.value===apex.active.map){spawnSelect.value=apex.active.savedFarm.map;gardenReady=false;gardenData=null;mapping=null;gridCache=null;rebuildRarities();raritySelect.value=apex.active.savedFarm.rarity;apexFarmRestorePending=true;}running=false;expectedLoadout=null; awaitingPalette=false;phase='stopped';version++;captureVersion++;release();alt('keyup');pending?.();status.textContent=message; }
+  function stop(message='Stopped.',preserveRecovery=false) {  shopBuyer.active=false;if(!preserveRecovery){autoRecovery.enabled=false;autoRecovery.generation++;autoRecovery.nextRetryAt=null;if(autoRecovery.pending){clearTimeout(autoRecovery.pending);autoRecovery.pending=null;}}if(apex.active?.savedFarm&&spawnSelect.value===apex.active.map){spawnSelect.value=apex.active.savedFarm.map;gardenReady=false;gardenData=null;mapping=null;gridCache=null;rebuildRarities();raritySelect.value=apex.active.savedFarm.rarity;apexFarmRestorePending=true;}running=false;expectedLoadout=null; awaitingPalette=false;phase='stopped';version++;captureVersion++;release();alt('keyup');pending?.();status.textContent=message; }
   function wait(ms) {
     return new Promise(resolve => { const timer=setTimeout(done,ms); function done(){clearTimeout(timer);if(pending===done)pending=null;resolve();} pending=done; });
   }
@@ -814,7 +815,7 @@
   function apexRunSnapshot(job){return job?{at:Date.now(),phase,type:job.type,map:job.map,preset:job.preset,dead:!!job.dead,status:job.historyStatus||null,position:pos?{x:pos.x,y:pos.y}:null,target:job.moveTarget||goal||null,navigateOutcome:job.navigateOutcome||null,lastBlocked:job.lastBlockedMove||null,boss:job.lastBoss?{id:job.lastBoss.id,x:job.lastBoss.x,y:job.lastBoss.y,hp:job.lastBoss.hp,ageMs:Date.now()-job.lastBoss.at}:null,lootGains:(job.lootGains||[]).map(p=>({type:p.type,rarity:p.rarity,count:p.count}))}:null;}
   function automationSnapshot(){return {at:Date.now(),running,phase,map:spawnSelect.value,position:pos?{x:pos.x,y:pos.y,ageMs:Date.now()-pos.updatedAt}:null,target:goal||null,routePoints:route.length,nextWaypoint:gardenReady&&mapping&&route[0]?mapping.toWorld(route[0]):null,keys:[...heldKeys],expectedPreset:expectedLoadout?.number||null,lastProgressAgeMs:Date.now()-autoRecovery.lastProgress,hunt:apexRunSnapshot(apex.active)};}
   function apexDiagnostics(){return {
-    scriptBuild:'2026-10-15-map-loot-recovery',automation:automationSnapshot(),lastHunt:apex.lastRun,
+    scriptBuild:'2026-10-16-no-mob-avoidance',automation:automationSnapshot(),lastHunt:apex.lastRun,
     world:{protocol:serverWorld.protocol||null,entityProtocol:serverWorld.entityProtocol||null,lastEntityFrameAgeMs:serverWorld.updatedAt?Date.now()-serverWorld.updatedAt:null,lastPlayerFrameAgeMs:serverWorld.own?.at?Date.now()-serverWorld.own.at:null,refreshNeeded:apexNeedsWorldRefresh(),refreshReason:serverWorld.snapshotNeededReason||null,frames:serverWorld.frames,rejected:serverWorld.rejected,records:serverWorld.entities.size,lastReject:serverWorld.lastFailure||null,lastRejectAgeMs:serverWorld.lastFailure?.at?Date.now()-serverWorld.lastFailure.at:null,apexRecords:[...serverWorld.entities.values()].filter(e=>(e.kind===1||e.kind===6)&&e.rarity>=9).map(e=>({id:e.id,type:e.type,catalog:mobIDs[e.type],screen:verifiedMobTypes.get(e.type)?.type,x:e.x,y:e.y,radius:e.radius,hp:e.hp}))},
     catalog:{...mobCatalogStatus,trusted:mobCatalogTrusted},
     screen:{lastFrameAgeMs:Date.now()-visualAt,labels:visualRows.length,pairs:visualPairs,cacheRecovery:{...atlasProbeState},learned:[...verifiedMobTypes].map(([id,v])=>({id,type:v.type,catalog:mobIDs[id]}))},
@@ -822,6 +823,29 @@
     hunt:apex.active?{type:apex.active.type,movement:{preset:apex.active.preset,inUltra:apexInUltraZone(),target:apex.active.moveTarget||goal,outcome:apex.active.navigateOutcome||null,replans:apex.active.avoidanceReplans||0,lastBlocked:apex.active.lastBlockedMove?{...apex.active.lastBlockedMove,ageMs:Date.now()-apex.active.lastBlockedMove.at}:null},approach:{level:apexApproachLevel(),reason:apex.active.approachReason||null,target:apex.active.standTarget?.world||null},segments:apex.active.segments?[...apex.active.segments.values()].map(s=>({id:s.id,type:s.type,hp:s.hp,dead:!!s.dead,x:s.x,y:s.y,ageMs:Date.now()-s.at})):null,segmentSweep:apex.active.segmentSweep||null,entityId:apex.active.entityId,liveTracked:apexTargetVisible(apex.active),lastSeenAgeMs:apex.active.lastBoss?.at?Date.now()-apex.active.lastBoss.at:null,source:apexTargetVisible(apex.active)?apex.active.trackingSource:apex.active.lastBoss?'Last known position; awaiting a fresh entity':apex.active.trackingSource,viewCoverage:apexViewCoverage(apex.active),searchPlan:apex.active.searchPlan,antennae:!!apex.active.searchPetal,viewScale:apex.active.viewScale,phase}:null
   };}
   button(apexControls,'Copy Apex diagnostics',async()=>{const text=JSON.stringify(apexDiagnostics(),null,2);try{await navigator.clipboard.writeText(text);apexStatus.textContent='Apex diagnostics copied.';}catch{let field=apexControls.querySelector('textarea.apex-diagnostics');if(!field){field=element('textarea','apex-diagnostics','',apexControls);field.style.width='100%';field.rows=6;}field.value=text;field.focus();field.select();}});
+  const shopControls=element('section','shop-controls','',panel);shopControls.style.cssText='margin-top:8px;padding-top:8px;border-top:1px solid #666';
+  element('strong','','Shop buyer',shopControls);
+  const shopStatus=element('div','apex-status','Open the game Shop, choose an offer, then start.',shopControls);
+  const shopOffers=element('div','','',shopControls);shopOffers.style.cssText='display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin:6px 0';
+  const shopInterval=element('input','number','',shopControls);shopInterval.type='number';shopInterval.min='50';shopInterval.max='10000';shopInterval.value='300';shopInterval.setAttribute('aria-label','Shop purchase interval in milliseconds');shopControls.append(' Purchase interval (ms)');
+  function shopPoint(x,y){return {x:game.width*x,y:game.height*y,at:Date.now()};}
+  function shopOfferPoint(offer){const index=Math.max(1,Math.min(10,Number(offer)||1))-1;return shopPoint(.134+.183*(index%5),.512+.302*Math.floor(index/5));}
+  function shopConfirmPoint(){const confirm=freshText('Confirm');if(confirm)return {x:confirm.x-game.width*.063,y:confirm.y+game.height*.24,at:Date.now()};return shopPoint(.436,.683);}
+  async function waitForShopConfirm(token){for(let elapsed=0;elapsed<1200;elapsed+=40){if(!shopBuyer.active||token!==version||scene()!=='play')return false;if(freshText('Confirm'))return true;await wait(40);}return false;}
+  async function runShopBuyer(){
+    const token=version,interval=Math.max(50,Math.min(10000,Number(shopInterval.value)||300));
+    while(shopBuyer.active&&token===version){
+      if(!freshText('Shop')){shopStatus.textContent='Open the Shop window first, then press Start shop buyer.';shopBuyer.active=false;break;}
+      if(!await clickPoint(shopOfferPoint(shopBuyer.offer),token)){shopStatus.textContent='Shop click could not be sent. Keep the game focused and the Shop open.';shopBuyer.active=false;break;}
+      if(!await waitForShopConfirm(token)){shopStatus.textContent='The purchase confirmation did not appear; buyer stopped without retrying another offer.';shopBuyer.active=false;break;}
+      if(!await clickPoint(shopConfirmPoint(),token)){shopStatus.textContent='Could not confirm the purchase; buyer stopped.';shopBuyer.active=false;break;}
+      shopBuyer.buys++;shopStatus.textContent=`Buying offer ${shopBuyer.offer} every ${interval} ms · confirmed clicks: ${shopBuyer.buys}. Press Stop to end.`;
+      await wait(interval);
+    }
+  }
+  const shopButtons=[];for(let n=1;n<=10;n++){const b=element('button','',String(n),shopOffers);b.type='button';b.onclick=()=>{shopBuyer.offer=n;for(const x of shopButtons)x.style.background='#444';b.style.background='#8d6b00';shopStatus.textContent=`Offer ${n} selected. Open the Shop, then press Start shop buyer.`;};shopButtons.push(b);}shopButtons[0].style.background='#8d6b00';
+  const shopStart=element('button','','Start shop buyer',shopControls);shopStart.type='button';shopStart.onclick=()=>{if(running)stop('Stopping current automation for the shop buyer.');autoRecovery.enabled=false;running=true;const token=++version;shopBuyer.active=true;shopBuyer.token=token;shopBuyer.buys=0;phase='shop buyer';void runShopBuyer();};
+  const shopStop=element('button','','Stop shop buyer',shopControls);shopStop.type='button';shopStop.onclick=()=>stop('Shop buyer stopped.');
   const apexGroups={garden:'Garden',desert:'Desert',computer:'Computer',sewers:'Sewers',ocean:'Ocean',jungle:'Jungle',ant_hell:'Normal Ant Hell',fire_ant_hell:'Fire Ant Hell',termite_ant_hell:'Termite Ant Hell'};
   let mobCatalog=null,mobIDs=[],mobCatalogRefresh=null,mobCatalogTrusted=false;
   const mobCatalogStatus={source:'Bundled fallback',state:'waiting',count:0,path:null,reason:null};
@@ -1169,12 +1193,11 @@
   function apexCircleMask(b,radius){
     return apexBlockCircle(new Uint8Array(gardenOpen.length).fill(1),b,radius);
   }
-  function apexBlockCircle(mask,b,radius,footprint=true){
+  function apexBlockCircle(mask,b,radius){
     const c=mapping.toMap(b),size=gardenData.size;
     const cellX=gardenData.worldW/size,cellY=gardenData.worldH/size,rx=radius/cellX+.5,ry=radius/cellY+.5;
-    // Boss masks reserve whole cells; ordinary mobs use exact centers and checked edges.
     for(let y=Math.max(0,Math.floor(c.y-ry));y<Math.min(size,Math.ceil(c.y+ry)+1);y++)for(let x=Math.max(0,Math.floor(c.x-rx));x<Math.min(size,Math.ceil(c.x+rx)+1);x++){
-      const dx=Math.max(0,Math.abs(x-c.x)-(footprint ? .5 : 0))*cellX,dy=Math.max(0,Math.abs(y-c.y)-(footprint ? .5 : 0))*cellY;
+      const dx=Math.max(0,Math.abs(x-c.x)-.5)*cellX,dy=Math.max(0,Math.abs(y-c.y)-.5)*cellY;
       if(Math.hypot(dx,dy)<radius)mask[y*size+x]=0;
     }return mask;
   }
@@ -1204,7 +1227,7 @@
     return true;
   }
   function apexSafeKeys(job,keys,seconds=.09,speed=300){
-    if(apexTerrainOnly(job)||!gardenReady)return keys;const bosses=apexSafetyBosses(job),dangers=apexAvoidanceThreats();if(!bosses.length&&!dangers.length)return keys;
+    if(apexTerrainOnly(job)||!gardenReady)return keys;const bosses=apexSafetyBosses(job);if(!bosses.length)return keys;
     if(!pos||Date.now()-pos.updatedAt>1500)return [];
     const p=position(),own=serverWorld.own;
     const liveSpeed=own&&Date.now()-own.at<1000?Math.hypot(own.vx||0,own.vy||0):0;
@@ -1215,15 +1238,8 @@
     const safe=list=>{
       const d=direction(list),len=Math.hypot(d.x,d.y);
       const dx=len?d.x/len*step:0,dy=len?d.y/len*step:0;
-      // Terrain only needs to stay clear until the next commanded input step.
-      // The additional mob-motion lookahead must not invent a wall collision.
       const terrainStep=job.movementSpeed*seconds,terrainEnd={x:p.x+(len?d.x/len*terrainStep:0),y:p.y+(len?d.y/len*terrainStep:0)};
       if(len&&!apexTerrainExitClear(g,p,terrainEnd))return blocked('terrain');
-      for(const e of dangers){const moving=apexMotionFresh(e),radius=apexAvoidanceRadius(e);
-        const rx=p.x-e.x,ry=p.y-e.y,vx=dx-(moving?e.vx||0:0)*duration,vy=dy-(moving?e.vy||0:0)*duration,t=Math.max(0,Math.min(1,-(rx*vx+ry*vy)/(vx*vx+vy*vy||1))),current=Math.hypot(rx,ry);
-        if(current<radius){if(Math.hypot(rx+vx*t,ry+vy*t)<current-1||Math.hypot(rx+vx,ry+vy)<=current+1)return blocked('mob',e);}
-        else if(Math.hypot(rx+vx*t,ry+vy*t)<radius)return blocked('mob',e);
-      }
       return bosses.every(b=>{
         const radius=apexStandRadius({lastBoss:b}),current=distance(p,b),moving=apexMotionFresh(b),rx=p.x-b.x,ry=p.y-b.y,vx=dx-(moving?b.vx||0:0)*duration,vy=dy-(moving?b.vy||0:0)*duration;
         const t=Math.max(0,Math.min(1,-(rx*vx+ry*vy)/(vx*vx+vy*vy||1))),closest=Math.hypot(rx+vx*t,ry+vy*t);
@@ -1242,28 +1258,15 @@
     if(keys.length&&target){const advancing=candidates.filter(list=>{const d=direction(list),len=Math.hypot(d.x,d.y);return distance({x:p.x+d.x/len*step,y:p.y+d.y/len*step},target)<distance(p,target)-.5;});advancing.sort((a,b)=>{const end=list=>{const d=direction(list),len=Math.hypot(d.x,d.y);return {x:p.x+d.x/len*step,y:p.y+d.y/len*step};};return distance(end(a),target)-distance(end(b),target);});if(advancing[0])return advancing[0];}
     if(idleSafe)return [];
     candidates.sort((a,c)=>{
-      const score=list=>{const d=direction(list),len=Math.hypot(d.x,d.y),q={x:p.x+d.x/len*step,y:p.y+d.y/len*step};return Math.min(...bosses.map(b=>distance(q,b)-apexStandRadius({lastBoss:b})),...dangers.map(e=>distance(q,e)-apexAvoidanceRadius(e)));};return score(c)-score(a);
+      const score=list=>{const d=direction(list),len=Math.hypot(d.x,d.y),q={x:p.x+d.x/len*step,y:p.y+d.y/len*step};return Math.min(...bosses.map(b=>distance(q,b)-apexStandRadius({lastBoss:b})));};return score(c)-score(a);
     });return candidates[0]||[];
   }
   function apexTravelAttack(job){const type=job?.preset===3&&!job.dead?'keydown':'keyup';alt(type);send(type,' ');}
-  function apexAvoidanceThreats(){
-    // Loot movement and L2 use terrain only; L3 hunting keeps its 20-unit mob gap.
-    if(apexTerrainOnly()||apex.active?.preset!==3||!pos||Date.now()-serverWorld.updatedAt>1000)return [];
-    return [...serverWorld.entities.values()].filter(e=>(e.kind===1||e.kind===6)&&e.rarity<9&&e.hp>0&&!String(apexMobType(e)||'').endsWith('_pet')&&Number.isFinite(e.x)&&Number.isFinite(e.y)&&distance(pos,e)<6000+(e.radius||0));
-  }
-  // Ordinary-mob clearance is always 20 world units: no health, speed or caution additions.
-  function apexAvoidanceRadius(e){return Math.max(0,Number(e.radius)||0)+20;}
-  function apexAvoidanceMask(base=null){
-    if(!gardenReady||!mapping||!pos)return base;const threats=apexAvoidanceThreats();if(!threats.length)return base;
-    const mask=base?base.slice():new Uint8Array(gardenOpen.length).fill(1);
-    mask.mobCircles=threats.map(e=>({x:e.x,y:e.y,radius:apexAvoidanceRadius(e)}));
-    for(const e of threats)apexBlockCircle(mask,e,apexAvoidanceRadius(e),false);return mask;
-  }
-  function apexTravelMask(){return apexTerrainOnly()||!gardenReady||!mapping?null:apexAvoidanceMask(apexSafetyMask(apex.active));}
+  function apexTravelMask(){return apexTerrainOnly()||!gardenReady||!mapping?null:apexSafetyMask(apex.active);}
   function apexSegmentClear(job,from,to){
     if(!apexTerrainExitClear(grid(),from,to))return false;if(apexTerrainOnly(job))return true;const dx=to.x-from.x,dy=to.y-from.y,length=dx*dx+dy*dy;
     const clear=(e,radius,required=0)=>{const t=Math.max(0,Math.min(1,((e.x-from.x)*dx+(e.y-from.y)*dy)/(length||1))),closest=Math.hypot(from.x+dx*t-e.x,from.y+dy*t-e.y),initial=distance(from,e);if(initial>=required&&closest<required)return false;return initial<radius?closest>=initial-1&&distance(to,e)>initial+1:closest>=radius-.01;};
-    return apexSafetyBosses(job).every(b=>clear(b,apexStandRadius({lastBoss:b}),(b.radius||0)+apexGap()+apexHealthGuard()))&&apexAvoidanceThreats().every(e=>clear(e,apexAvoidanceRadius(e)));
+    return apexSafetyBosses(job).every(b=>clear(b,apexStandRadius({lastBoss:b}),(b.radius||0)+apexGap()+apexHealthGuard()));
   }
   function apexApproachPath(job,from,to,allowed){
     if(apexSegmentClear(job,from,to))return [mapping.toMap(from),mapping.toMap(to)];
@@ -1289,7 +1292,7 @@
         const allowed=apexTravelMask(),path=apexApproachPath(job,position(),destination,allowed);
         const result=await navigate(path,token,false);
         if(progressPoint&&distance(position(),progressPoint)>60){progressPoint=position();progressAt=Date.now();}
-        if(result==='avoid'){job.avoidanceReplans=(job.avoidanceReplans||0)+1;if(Date.now()-progressAt>=1200&&apexRelaxApproach(job,'Repeated blocked route movement'))progressAt=Date.now();apexStatus.textContent='Routing around nearby mobs toward the Apex.';}
+        if(result==='avoid'){job.avoidanceReplans=(job.avoidanceReplans||0)+1;if(Date.now()-progressAt>=1200&&apexRelaxApproach(job,'Repeated blocked route movement'))progressAt=Date.now();apexStatus.textContent='Routing around the Apex border or map walls.';}
         if(result==='arrived'||result==='found'||result==='zone'||result==='view'||result==='snapshot'||result==='defeated'){job.navigateOutcome=result;return true;}if(result==='screen'||result==='stopped'||result==='loot-timeout')return false;
       }catch(error){apex.lastError=error.message;if(apexRelaxApproach(job,'No route with the wider comfort buffer')){release();await apexLoadoutWait(100,token,true);continue;}if(++failedPlans>=3){release();job.navigateOutcome='blocked';return false;}}
       if(++attempts>20){release();apexStatus.textContent='Checking another route around the map walls.';return false;}release();await apexLoadoutWait(180,token,true);
@@ -1308,7 +1311,6 @@
         job.hazard={mask,center:{x:b.x,y:b.y},radius:exclusion};
       }allowed=job.hazard.mask;
     }
-    allowed=apexAvoidanceMask(allowed);
     const g=grid(allowed),candidates=[],bearing=Math.atan2(p.y-b.y,p.x-b.x),sampleOffset=offset+(job.standDistance?0:40);
     // Reuse a valid nearby stand-off target instead of changing sides every frame.
     const prior=job.standTarget,slack=Math.max(100,sampleOffset-offset+80);
@@ -1801,22 +1803,9 @@
       if(best<0||d>limit)throw new Error(`${label} is not near reachable floor.`);return best;
     }
     const g={W,H,open,point,nearest};
-    if(allowed?.mobCircles?.length){
-      const circles=allowed.mobCircles.map(e=>({...e,minX:e.x-e.radius,maxX:e.x+e.radius,minY:e.y-e.radius,maxY:e.y+e.radius,radiusSquared:Math.max(0,e.radius-.01)**2}));
-      g.segmentClear=(a,b)=>{
-        const from=mapping.toWorld(a),to=mapping.toWorld(b),dx=to.x-from.x,dy=to.y-from.y,length=dx*dx+dy*dy;
-        const minX=Math.min(from.x,to.x),maxX=Math.max(from.x,to.x),minY=Math.min(from.y,to.y),maxY=Math.max(from.y,to.y);
-        for(const e of circles){
-          if(e.maxX<minX||e.minX>maxX||e.maxY<minY||e.minY>maxY)continue;
-          const t=Math.max(0,Math.min(1,((e.x-from.x)*dx+(e.y-from.y)*dy)/(length||1)));
-          if((from.x+dx*t-e.x)**2+(from.y+dy*t-e.y)**2<e.radiusSquared)return false;
-        }return true;
-      };
-    }
     gridCache={allowed,version:obstacleVersion,g};return g;
   }
   function clearLine(g,a,b){
-    if(g.segmentClear&&!g.segmentClear(a,b))return false;
     const dx=b.x-a.x,dy=b.y-a.y,n=Math.ceil(Math.max(Math.abs(dx),Math.abs(dy))*4);let last=null;
     for(let k=0;k<=n;k++){
       const f=n?k/n:0,x=Math.round(a.x+dx*f),y=Math.round(a.y+dy*f);
@@ -1836,7 +1825,6 @@
       for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
         if(!dx&&!dy)continue;const xx=x+dx,yy=y+dy;if(xx<0||yy<0||xx>=g.W||yy>=g.H)continue;const next=yy*g.W+xx;if(!g.open[next]||closed[next])continue;
         if(dx&&dy&&(!g.open[y*g.W+xx]||!g.open[yy*g.W+x]))continue;
-        if(g.segmentClear&&!g.segmentClear({x,y},{x:xx,y:yy}))continue;
         const value=cost[i]+(dx&&dy?Math.SQRT2:1);if(value<cost[next]){cost[next]=value;previous[next]=i;push(next,value+heuristic(next));}
       }
     }

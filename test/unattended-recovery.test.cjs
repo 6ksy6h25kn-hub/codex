@@ -39,7 +39,7 @@ async function fixture(check){
      return {ok,delay:timer.delay,enabled,retry,starts,cancelled:timer.cancelled,events:autoRecovery.events};
     },
     recoveryContext(){
-     running=true;autoRecovery.enabled=true;autoRecovery.attempts=[];phase='Apex DPS';pos={x:5000,y:5000,updatedAt:Date.now()};goal={x:6500,y:5000};apex.active={type:'hornet',map:'Garden',preset:3,dead:false,lastBlockedMove:{at:Date.now(),reason:'mob',position:{x:5000,y:5000}}};hold(['d']);scheduleRecovery('No movement or phase progress for two minutes');stop();apex.active=null;phase='patrol point 1/6';return apexDiagnostics();
+     running=true;autoRecovery.enabled=true;autoRecovery.attempts=[];phase='Apex DPS';pos={x:5000,y:5000,updatedAt:Date.now()};goal={x:6500,y:5000};apex.active={type:'hornet',map:'Garden',preset:3,dead:false,lastBlockedMove:{at:Date.now(),reason:'terrain',position:{x:5000,y:5000}}};hold(['d']);scheduleRecovery('No movement or phase progress for two minutes');stop();apex.active=null;phase='patrol point 1/6';return apexDiagnostics();
     },
     async earlyExit(){
      running=false;autoRecovery.enabled=false;apex.queue=[];screenInfo=()=>({kind:'play'});liveGate=async()=>true;bootSpawn=async()=>false;
@@ -69,5 +69,5 @@ test('An early farming loop return restarts instead of leaving running true with
 }));
 
 test('Recovery preserves the stalled hunt context when the current hunt is already cleared',async()=>fixture(async p=>{
- const r=await p.evaluate(()=>unattendedTest.recoveryContext());assert.equal(r.hunt,null);assert.equal(r.scriptBuild,'2026-10-15-map-loot-recovery');assert.equal(r.automation.phase,'patrol point 1/6');const c=r.recovery.events[0].context;assert.equal(c.phase,'Apex DPS');assert.equal(c.hunt.type,'hornet');assert.equal(c.hunt.preset,3);assert.equal(c.hunt.lastBlocked.reason,'mob');assert.deepEqual(c.keys,['d']);
+ const r=await p.evaluate(()=>unattendedTest.recoveryContext());assert.equal(r.hunt,null);assert.equal(r.scriptBuild,'2026-10-16-no-mob-avoidance');assert.equal(r.automation.phase,'patrol point 1/6');const c=r.recovery.events[0].context;assert.equal(c.phase,'Apex DPS');assert.equal(c.hunt.type,'hornet');assert.equal(c.hunt.preset,3);assert.equal(c.hunt.lastBlocked.reason,'terrain');assert.deepEqual(c.keys,['d']);
 }));

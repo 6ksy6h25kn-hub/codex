@@ -515,5 +515,23 @@
       "Equipped-to-inventory loadout changes do not appear as Apex loot",
       "Full existing regression suite"
     ]
+  },
+  "latestNoMobAvoidanceRegression": {
+    "date": "2026-10-16",
+    "timezone": "America/New_York",
+    "scriptBuild": "2026-10-16-no-mob-avoidance",
+    "command": "npm test",
+    "passed": 64,
+    "failed": 0,
+    "skipped": 0,
+    "liveServerTest": false,
+    "ordinaryMobAvoidance": false,
+    "apexBossBorderGap": true,
+    "terrainCollisionChecks": true,
+    "checks": [
+      "L2 and L3 retain a direct two-point route through an ordinary mob",
+      "L2 and L3 retain the requested direct movement key",
+      "Full browser regression suite"
+    ]
   }
 }
