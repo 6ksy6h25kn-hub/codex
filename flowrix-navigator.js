@@ -219,7 +219,7 @@
   const spawnControls=element('div','','',panel);spawnControls.style.marginTop='8px';spawnControls.append('Farm map: ');
   spawnSelect=element('select','','',spawnControls);
   const spawnNames=['Default','Garden','Desert','Computer','Ocean','Jungle','Hell','Ant Hell','Sewers','PVP Arena','Maze'];
-  const buttonLabels=new Set(['continue','ready','skip tutorial','shop','confirm','cancel',...spawnNames.map(s=>s.toLowerCase())]);
+  const buttonLabels=new Set(['continue','ready','confirm',"today's offers:",...spawnNames.map(s=>s.toLowerCase())]);
   const farmMapNames=spawnNames.flatMap(name=>name==='Ant Hell'?['Normal Ant Hell','Fire Ant Hell','Termite Ant Hell']:name==='Ocean'?['Ocean','Jellyfish zone']:[name]);
   function actualSpawnName(){if(spawnSelect.value==='Jellyfish zone')return 'Ocean';return spawnSelect.value.endsWith('Ant Hell')?'Ant Hell':spawnSelect.value;}
   let apexResumeBuild=false,apexFarmRestorePending=false;
@@ -236,7 +236,6 @@
   backgroundFarm.onchange=()=>saveSettings();
   function inputAllowed(){return autoRecovery.enabled&&backgroundFarm.checked||!document.hidden&&document.hasFocus();}
   const autoRecovery={enabled:false,pending:null,attempts:[],lastReason:null,lastProgress:Date.now(),point:null,phase:null,bossHP:null,generation:0,loopToken:null,hasStarted:false,nextRetryAt:null,events:[]};
-  const shopBuyer={active:false,token:0,offer:1,buys:0};
   function recoveryEvent(reason){autoRecovery.events.unshift({at:Date.now(),reason,context:automationSnapshot()});autoRecovery.events=autoRecovery.events.slice(0,20);}
   function recoveryReason(now=Date.now()){
     if(!autoRecovery.enabled||autoRecovery.pending||capturing||!inputAllowed())return null;
@@ -259,7 +258,7 @@
     autoRecovery.pending=setTimeout(()=>{autoRecovery.pending=null;autoRecovery.nextRetryAt=null;if(!autoRecovery.enabled||autoRecovery.generation!==generation)return;temporaryBlocks.clear();obstacleVersion++;gridCache=null;gardenReady=false;gardenData=null;mapping=null;screenCache=null;frameCache=null;travelLoadoutActive=false;deathLoadoutSwapPending=true;if(apex.active){apex.active.historyStatus='Interrupted by recovery: '+reason;renderApexHistory();apex.active=null;}refreshTextCache();autoRecovery.lastProgress=Date.now();autoRecovery.point=null;void start(true).catch(error=>scheduleRecovery(error.message));},delay);
     return true;
   }
-  function stop(message='Stopped.',preserveRecovery=false) {  shopBuyer.active=false;if(!preserveRecovery){autoRecovery.enabled=false;autoRecovery.generation++;autoRecovery.nextRetryAt=null;if(autoRecovery.pending){clearTimeout(autoRecovery.pending);autoRecovery.pending=null;}}if(apex.active?.savedFarm&&spawnSelect.value===apex.active.map){spawnSelect.value=apex.active.savedFarm.map;gardenReady=false;gardenData=null;mapping=null;gridCache=null;rebuildRarities();raritySelect.value=apex.active.savedFarm.rarity;apexFarmRestorePending=true;}running=false;expectedLoadout=null; awaitingPalette=false;phase='stopped';version++;captureVersion++;release();alt('keyup');pending?.();status.textContent=message; }
+  function stop(message='Stopped.',preserveRecovery=false) {  if(!preserveRecovery){autoRecovery.enabled=false;autoRecovery.generation++;autoRecovery.nextRetryAt=null;if(autoRecovery.pending){clearTimeout(autoRecovery.pending);autoRecovery.pending=null;}}if(apex.active?.savedFarm&&spawnSelect.value===apex.active.map){spawnSelect.value=apex.active.savedFarm.map;gardenReady=false;gardenData=null;mapping=null;gridCache=null;rebuildRarities();raritySelect.value=apex.active.savedFarm.rarity;apexFarmRestorePending=true;}running=false;expectedLoadout=null; awaitingPalette=false;phase='stopped';version++;captureVersion++;release();alt('keyup');pending?.();status.textContent=message; }
   function wait(ms) {
     return new Promise(resolve => { const timer=setTimeout(done,ms); function done(){clearTimeout(timer);if(pending===done)pending=null;resolve();} pending=done; });
   }
@@ -620,8 +619,7 @@
   async function clickPoint(p,token){
     if(!p||Date.now()-p.at>1000||token!==version||!running||!inputAllowed())return false;
     const r=game.getBoundingClientRect(),data={clientX:r.left+p.x*r.width/game.width,clientY:r.top+p.y*r.height/game.height,button:0,bubbles:true,cancelable:true};
-    const target=p.dom||document.elementFromPoint(data.clientX,data.clientY)||game;
-    function dispatch(type,buttons){const d={...data,buttons};target.dispatchEvent(type.startsWith('pointer')&&globalThis.PointerEvent?new PointerEvent(type,{...d,pointerId:1,pointerType:'mouse',isPrimary:true}):new MouseEvent(type,d));}
+    function dispatch(type,buttons){const d={...data,buttons};(p.dom||game).dispatchEvent(type.startsWith('pointer')&&globalThis.PointerEvent?new PointerEvent(type,{...d,pointerId:1,pointerType:'mouse',isPrimary:true}):new MouseEvent(type,d));}
     dispatch('pointermove',0);dispatch('mousemove',0);await wait(80);if(token!==version||!running)return false;
     dispatch('pointerdown',1);dispatch('mousedown',1);await wait(110);dispatch('pointerup',0);dispatch('mouseup',0);
     if(token!==version||!running||!inputAllowed())return false;dispatch('click',0);frameCache=null;return true;
@@ -824,30 +822,6 @@
     hunt:apex.active?{type:apex.active.type,movement:{preset:apex.active.preset,inUltra:apexInUltraZone(),target:apex.active.moveTarget||goal,outcome:apex.active.navigateOutcome||null,replans:apex.active.avoidanceReplans||0,lastBlocked:apex.active.lastBlockedMove?{...apex.active.lastBlockedMove,ageMs:Date.now()-apex.active.lastBlockedMove.at}:null},approach:{level:apexApproachLevel(),reason:apex.active.approachReason||null,target:apex.active.standTarget?.world||null},segments:apex.active.segments?[...apex.active.segments.values()].map(s=>({id:s.id,type:s.type,hp:s.hp,dead:!!s.dead,x:s.x,y:s.y,ageMs:Date.now()-s.at})):null,segmentSweep:apex.active.segmentSweep||null,entityId:apex.active.entityId,liveTracked:apexTargetVisible(apex.active),lastSeenAgeMs:apex.active.lastBoss?.at?Date.now()-apex.active.lastBoss.at:null,source:apexTargetVisible(apex.active)?apex.active.trackingSource:apex.active.lastBoss?'Last known position; awaiting a fresh entity':apex.active.trackingSource,viewCoverage:apexViewCoverage(apex.active),searchPlan:apex.active.searchPlan,antennae:!!apex.active.searchPetal,viewScale:apex.active.viewScale,phase}:null
   };}
   button(apexControls,'Copy Apex diagnostics',async()=>{const text=JSON.stringify(apexDiagnostics(),null,2);try{await navigator.clipboard.writeText(text);apexStatus.textContent='Apex diagnostics copied.';}catch{let field=apexControls.querySelector('textarea.apex-diagnostics');if(!field){field=element('textarea','apex-diagnostics','',apexControls);field.style.width='100%';field.rows=6;}field.value=text;field.focus();field.select();}});
-  const shopControls=element('section','shop-controls','',panel);shopControls.style.cssText='margin-top:8px;padding-top:8px;border-top:1px solid #666';
-  element('strong','','Shop buyer',shopControls);
-  const shopStatus=element('div','apex-status','Open the game Shop, choose an offer, then start.',shopControls);
-  const shopOffers=element('div','','',shopControls);shopOffers.style.cssText='display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin:6px 0';
-  const shopInterval=element('input','number','',shopControls);shopInterval.type='number';shopInterval.min='50';shopInterval.max='10000';shopInterval.value='300';shopInterval.setAttribute('aria-label','Shop purchase interval in milliseconds');shopControls.append(' Purchase interval (ms)');
-  function shopPoint(x,y){return {x:game.width*x,y:game.height*y,at:Date.now()};}
-  function shopOfferPoint(offer){const index=Math.max(1,Math.min(10,Number(offer)||1))-1;return shopPoint(.134+.183*(index%5),.512+.302*Math.floor(index/5));}
-  // The Shop is rendered in an overlay that does not reliably publish its labels to the
-  // canvas text hook. Its offer and confirmation buttons keep fixed relative positions.
-  function shopConfirmPoint(){return shopPoint(.436,.683);}
-  async function waitForShopConfirm(token){await wait(260);return shopBuyer.active&&token===version&&scene()==='play';}
-  async function runShopBuyer(){
-    const token=version,interval=Math.max(50,Math.min(10000,Number(shopInterval.value)||300));
-    while(shopBuyer.active&&token===version){
-      if(!await clickPoint(shopOfferPoint(shopBuyer.offer),token)){shopStatus.textContent='Shop click could not be sent. Keep the game focused and the Shop open.';shopBuyer.active=false;break;}
-      if(!await waitForShopConfirm(token)){shopStatus.textContent='Shop buyer stopped.';break;}
-      if(!await clickPoint(shopConfirmPoint(),token)){shopStatus.textContent='Could not confirm the purchase; buyer stopped.';shopBuyer.active=false;break;}
-      shopBuyer.buys++;shopStatus.textContent=`Buying offer ${shopBuyer.offer} every ${interval} ms · confirmed clicks: ${shopBuyer.buys}. Press Stop to end.`;
-      await wait(interval);
-    }
-  }
-  const shopButtons=[];for(let n=1;n<=10;n++){const b=element('button','',String(n),shopOffers);b.type='button';b.onclick=()=>{shopBuyer.offer=n;for(const x of shopButtons)x.style.background='#444';b.style.background='#8d6b00';shopStatus.textContent=`Offer ${n} selected. Open the Shop, then press Start shop buyer.`;};shopButtons.push(b);}shopButtons[0].style.background='#8d6b00';
-  const shopStart=element('button','','Start shop buyer',shopControls);shopStart.type='button';shopStart.onclick=()=>{if(running)stop('Stopping current automation for the shop buyer.');autoRecovery.enabled=false;running=true;const token=++version;shopBuyer.active=true;shopBuyer.token=token;shopBuyer.buys=0;phase='shop buyer';void runShopBuyer();};
-  const shopStop=element('button','','Stop shop buyer',shopControls);shopStop.type='button';shopStop.onclick=()=>stop('Shop buyer stopped.');
   const apexGroups={garden:'Garden',desert:'Desert',computer:'Computer',sewers:'Sewers',ocean:'Ocean',jungle:'Jungle',ant_hell:'Normal Ant Hell',fire_ant_hell:'Fire Ant Hell',termite_ant_hell:'Termite Ant Hell'};
   let mobCatalog=null,mobIDs=[],mobCatalogRefresh=null,mobCatalogTrusted=false;
   const mobCatalogStatus={source:'Bundled fallback',state:'waiting',count:0,path:null,reason:null};
@@ -1294,7 +1268,7 @@
         const allowed=apexTravelMask(),path=apexApproachPath(job,position(),destination,allowed);
         const result=await navigate(path,token,false);
         if(progressPoint&&distance(position(),progressPoint)>60){progressPoint=position();progressAt=Date.now();}
-        if(result==='avoid'){job.avoidanceReplans=(job.avoidanceReplans||0)+1;if(Date.now()-progressAt>=1200&&apexRelaxApproach(job,'Repeated blocked route movement'))progressAt=Date.now();apexStatus.textContent='Routing around the Apex border or map walls.';}
+        if(result==='avoid'){job.avoidanceReplans=(job.avoidanceReplans||0)+1;if(Date.now()-progressAt>=1200&&apexRelaxApproach(job,'Repeated blocked route movement'))progressAt=Date.now();apexStatus.textContent='Routing around nearby mobs toward the Apex.';}
         if(result==='arrived'||result==='found'||result==='zone'||result==='view'||result==='snapshot'||result==='defeated'){job.navigateOutcome=result;return true;}if(result==='screen'||result==='stopped'||result==='loot-timeout')return false;
       }catch(error){apex.lastError=error.message;if(apexRelaxApproach(job,'No route with the wider comfort buffer')){release();await apexLoadoutWait(100,token,true);continue;}if(++failedPlans>=3){release();job.navigateOutcome='blocked';return false;}}
       if(++attempts>20){release();apexStatus.textContent='Checking another route around the map walls.';return false;}release();await apexLoadoutWait(180,token,true);
@@ -1515,7 +1489,8 @@
     phase='travel swap';if(!await prepareTravelLoadout(token))throw new Error('SCREEN');return true;
   }
   async function start(farming){
-    if(running||capturing)return;const recovering=autoRecovery.enabled;stop('Starting.',recovering);autoRecovery.enabled=!!farming;if(!recovering)autoRecovery.attempts=[];autoRecovery.lastProgress=Date.now();autoRecovery.point=null;autoRecovery.phase=null;running=true;const token=++version;autoRecovery.loopToken=token;autoRecovery.hasStarted=true;root.activeElement?.blur();teaching=false;saveSettings();
+    if(running||capturing)return;
+    shopStop('Stopped shop buying because navigation started.');const recovering=autoRecovery.enabled;stop('Starting.',recovering);autoRecovery.enabled=!!farming;if(!recovering)autoRecovery.attempts=[];autoRecovery.lastProgress=Date.now();autoRecovery.point=null;autoRecovery.phase=null;running=true;const token=++version;autoRecovery.loopToken=token;autoRecovery.hasStarted=true;root.activeElement?.blur();teaching=false;saveSettings();
     let booted=false,area=null,points=null,stage='entry',corner=0,swappedBack=false,lastClick=0,spawnChosen=false,lastScreen='',recoveries=0;
     try{
       while(running&&token===version){
@@ -1580,7 +1555,298 @@
   button(setup,'Show/hide map',()=>{if(region)mapbox.style.display=mapbox.style.display==='block'?'none':'block';});
   button(setup,'Capture maps',()=>captureMaps(false));button(setup,'Capture colors manually',captureColorsManually);
   button(setup,'Teach color',teachColor);button(setup,'Add higher rarity',addRarity);
-  button(actions,'Go to coords',go);button(actions,'Start automatic loop',()=>start(true));button(actions,'Stop',()=>stop());button(actions,'Close',()=>window.flowrixNav.destroy());
+  button(actions,'Go to coords',go);button(actions,'Start automatic loop',()=>start(true));button(actions,'Stop',()=>{shopStop('Stopped.');stop();});button(actions,'Close',()=>window.flowrixNav.destroy());
+  // --- Shop buyer (local mouse input only; no server state is modified here). ---
+  // Give the existing navigator its own tab without reconstructing any of its controls.
+  const navPage=element('section','navigator-page','',panel);
+  for(const child of [...panel.children])if(child!==title&&child!==navPage)navPage.append(child);
+  const pageTabs=element('div','page-tabs','',panel);
+  panel.insertBefore(pageTabs,navPage);
+  Object.assign(pageTabs.style,{display:'flex',gap:'6px',margin:'2px 0 12px'});
+  const navigatorTab=element('button','','Navigator',pageTabs);
+  const shopTab=element('button','','Shop auto-buy',pageTabs);
+  Object.assign(navigatorTab.style,{flex:'1',minHeight:'38px',margin:'0'});
+  Object.assign(shopTab.style,{flex:'1',minHeight:'38px',margin:'0'});
+  const shopPage=element('section','shop-page','',panel);
+  shopPage.style.display='none';
+  const shopHeading=element('div','','Buy repeatedly from a shop slot',shopPage);
+  shopHeading.style.cssText='font-weight:bold;margin-bottom:8px';
+  const shopHint=element('div','','Keep the game Shop visible. Choose a slot below (1–5 top row; 6–10 bottom row), then use Check Shop to verify detection.',shopPage);
+  shopHint.style.cssText='font-size:12px;line-height:1.5;color:#ddd;margin-bottom:8px';
+  const shopSlots=element('div','','',shopPage);
+  shopSlots.style.cssText='display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:5px;margin:8px 0 14px';
+  const slotButtons=[];
+  let shopSelected=1,shopRunning=false,shopToken=0,shopAttempts=0;
+  const shopPrefsKey='flowrixShopBuyerV1';
+  let savedShopPrefs=null;
+  try{savedShopPrefs=JSON.parse(localStorage.getItem(shopPrefsKey)||'null');}catch{}
+  if(Number.isInteger(savedShopPrefs?.slot)&&savedShopPrefs.slot>=1&&savedShopPrefs.slot<=10)shopSelected=savedShopPrefs.slot;
+  for(let n=1;n<=10;n++){
+    const b=element('button','',''+n,shopSlots);
+    b.style.cssText='min-width:0;width:100%;min-height:38px;margin:0;font-size:14px';
+    b.onclick=()=>{if(shopRunning)return;shopSelected=n;drawShopSlots();saveShopPrefs();};
+    slotButtons.push(b);
+  }
+  function drawShopSlots(){
+    for(let i=0;i<slotButtons.length;i++){
+      slotButtons[i].style.background=i+1===shopSelected?'#358245':'#444';
+      slotButtons[i].style.borderColor=i+1===shopSelected?'#9bffae':'#aaa';
+      slotButtons[i].disabled=shopRunning;
+    }
+  }
+  const shopTiming=element('label','','Interval between purchases (ms): ',shopPage);
+  shopTiming.style.cssText='display:block;font-size:12px';
+  const shopInterval=element('input','','',shopTiming);
+  shopInterval.type='number';shopInterval.min='5';shopInterval.max='60000';shopInterval.step='1';
+  shopInterval.value=Number.isFinite(savedShopPrefs?.interval)&&savedShopPrefs.interval>=5&&savedShopPrefs.interval<=60000?String(savedShopPrefs.interval):'500';
+  shopInterval.style.cssText='width:100%;margin:5px 0 8px';
+  function saveShopPrefs(){
+    try{localStorage.setItem(shopPrefsKey,JSON.stringify({slot:shopSelected,interval:Number(shopInterval.value)}));}catch{}
+  }
+  shopInterval.onchange=saveShopPrefs;
+  const shopStatus=element('div','status','Shop buyer idle.',shopPage);
+  shopStatus.style.cssText='font-size:12px;line-height:1.5;min-height:42px;margin:8px 0;white-space:pre-line';
+  const shopButtons=element('div','','',shopPage);
+  const shopStartButton=element('button','','Start buying',shopButtons);
+  const shopStopButton=element('button','','Stop buying',shopButtons);
+  shopStartButton.style.background='#247637';shopStopButton.style.background='#9e3333';
+  shopStopButton.disabled=true;
+  const shopFootnote=element('div','','Uses the yellow star button for the selected slot, then the yellow star button on Confirm. Purchases spend your actual in-game stars. Closing this script stops buying.',shopPage);
+  shopFootnote.style.cssText='font-size:11px;line-height:1.5;color:#ddd;margin-top:7px';
+  function shopPageSelect(page){
+    const isShop=page==='shop';navPage.style.display=isShop?'none':'';shopPage.style.display=isShop?'':'none';
+    navigatorTab.style.background=isShop?'#444':'#358245';shopTab.style.background=isShop?'#358245':'#444';
+  }
+  navigatorTab.onclick=()=>shopPageSelect('nav');
+  shopTab.onclick=()=>shopPageSelect('shop');
+  drawShopSlots();shopPageSelect('nav');
+
+  // Detect the *shop's* on-screen price buttons, not a percentage of the
+  // entire game canvas. On ultrawide layouts the shop is on the left, so
+  // coordinates measured from the canvas center are completely wrong.
+  let lastShopGrid=null,shopScreenCache={at:0,name:'unknown'};
+  function shopYellowRuns(image,y,left=0,right=image.W){
+    const {W,H,pixels}=image,runs=[];
+    const minWidth=Math.max(20,Math.floor(Math.min(W,H)*.035));
+    let start=-1;
+    left=Math.max(0,Math.floor(left));right=Math.min(W,Math.ceil(right));
+    for(let x=left;x<=right;x++){
+      const i=(y*W+x)*4;
+      const on=x<right&&pixels[i]>185&&pixels[i+1]>150&&pixels[i+2]<145&&pixels[i+1]>pixels[i]*.65;
+      if(on&&start<0)start=x;
+      if(!on&&start>=0){if(x-start>=minWidth)runs.push({x:(start+x-1)/2,w:x-start});start=-1;}
+    }
+    return runs;
+  }
+  function shopFindGrid(image=frame(true)){
+    // Five price buttons have equal spacing and similar widths, but the
+    // underlying game may also render yellow XP bars, stars and other UI.
+    // We therefore scan for ANY five consecutive, evenly spaced runs rather
+    // than requiring precisely five yellow objects on the entire screen.
+    const {W,H,pixels}=image,step=Math.max(2,Math.round(H/250));
+    const candidates=[];
+    for(let y=Math.floor(H*.20);y<Math.floor(H*.96);y+=step){
+      const runs=shopYellowRuns(image,y).filter(p=>p.w<W*.25);
+      for(let i=0;i+5<=runs.length;i++){
+        const five=runs.slice(i,i+5);
+        const gaps=five.slice(1).map((p,j)=>p.x-five[j].x);
+        const gap=gaps.reduce((a,b)=>a+b,0)/4;
+        const width=five.reduce((a,p)=>a+p.w,0)/5;
+        // Reject the narrow fragments made by star glyphs inside buttons.
+        if(gap<30||width<gap*.58||width>gap*.91)continue;
+        if(gaps.some(g=>Math.abs(g-gap)>gap*.12))continue;
+        if(five.some(p=>Math.abs(p.w-width)>width*.26))continue;
+        candidates.push({y,xs:five.map(p=>p.x),gap,width});
+      }
+    }
+    const groups=[];
+    for(const candidate of candidates){
+      let group=groups.find(g=>candidate.y-g.last<H*.09&&candidate.y>=g.last&&
+        candidate.xs.every((x,i)=>Math.abs(x-g.xs[i])<candidate.gap*.12));
+      if(!group)groups.push(group={list:[],xs:candidate.xs,last:candidate.y});
+      group.list.push(candidate);group.last=candidate.y;
+    }
+    const median=values=>{const a=values.slice().sort((x,y)=>x-y);return a.length%2?a[(a.length-1)/2]:(a[a.length/2-1]+a[a.length/2])/2;};
+    const isYellow=(x,y)=>{
+      if(x<0||y<0||x>=W||y>=H)return false;
+      const i=(y*W+x)*4,r=pixels[i],g=pixels[i+1],b=pixels[i+2];
+      return r>185&&g>150&&b<145&&g>r*.65;
+    };
+    const rows=[];
+    for(const group of groups){
+      if(group.list.length<2)continue;
+      const xs=Array.from({length:5},(_,i)=>median(group.list.map(p=>p.xs[i])));
+      const gap=median(group.list.map(p=>p.gap));
+      const width=median(group.list.map(p=>p.width));
+      const scanY=median(group.list.map(p=>p.y));
+      // Sample the yellow button fill near the left/right edges, not its
+      // star/text, to find the actual VERTICAL center of each price button.
+      // A scanline at the top edge alone can lead to unreliable clicks.
+      const centers=[];
+      for(const x of xs)for(const side of [-1,1]){
+        const px=Math.round(x+side*width*.40);
+        const top=Math.max(0,Math.round(scanY-width*.6));
+        const bottom=Math.min(H-1,Math.round(scanY+width*.8));
+        let start=-1;
+        for(let y=top;y<=bottom+1;y++){
+          const yellow=y<=bottom&&isYellow(px,y);
+          if(yellow&&start<0)start=y;
+          if(!yellow&&start>=0){
+            const height=y-start,cy=(start+y-1)/2;
+            if(height>=Math.max(8,width*.1)&&Math.abs(cy-scanY)<width*.6)centers.push(cy);
+            start=-1;
+          }
+        }
+      }
+      rows.push({xs,gap,width,y:centers.length>=5?median(centers):scanY,count:group.list.length});
+    }
+    rows.sort((a,b)=>a.y-b.y);
+    let best=null;
+    for(let i=0;i<rows.length;i++)for(let j=i+1;j<rows.length;j++){
+      const a=rows[i],b=rows[j],dy=b.y-a.y;
+      if(dy<a.gap*.6||dy>a.gap*2.5)continue;
+      if(Math.abs(b.gap-a.gap)>a.gap*.12||Math.abs(b.width-a.width)>a.width*.2)continue;
+      if(a.xs.some((x,k)=>Math.abs(x-b.xs[k])>a.gap*.12))continue;
+      const score=a.count+b.count+a.width/100;
+      if(!best||score>best.score)best={a,b,score};
+    }
+    if(!best)return null;
+    return [best.a,best.b].flatMap(row=>row.xs.map(x=>({x:x/W,y:row.y/H})));
+  }
+  function shopFindConfirm(image=frame(true)){
+    // The confirm button is next to the GRAY Cancel button. Searching in the
+    // shop's previous location prevents stars in the HUD being mistaken for it.
+    const grid=lastShopGrid;if(!grid)return null;
+    const {W,H,pixels}=image;
+    const colGap=(grid[1].x-grid[0].x)*W;
+    const rowGap=(grid[5].y-grid[0].y)*H;
+    const left=(grid[1].x*W-colGap*.2),right=(grid[3].x*W+colGap*.2);
+    const top=Math.max(0,Math.floor(grid[0].y*H-rowGap*.3));
+    const bottom=Math.min(H,Math.ceil(grid[5].y*H+rowGap*.25));
+    const step=Math.max(2,Math.round(H/250)),found=[];
+    for(let y=top;y<bottom;y+=step){
+      const runs=shopYellowRuns(image,y,left,right);
+      for(const run of runs){
+        if(run.w<colGap*.25||run.w>colGap*.95)continue;
+        const cx=Math.min(W-1,Math.round(run.x+run.w*1.25));
+        const k=(y*W+cx)*4,r=pixels[k],g=pixels[k+1],b=pixels[k+2];
+        // A gray rectangle to the right identifies the Cancel button.
+        if(Math.max(r,g,b)-Math.min(r,g,b)<25&&(r+g+b)/3>=45&&(r+g+b)/3<=155){
+          found.push({x:run.x,y,w:run.w});
+        }
+      }
+    }
+    if(found.length<2)return null;
+    const strongest=found.slice().sort((a,b)=>b.w-a.w)[0];
+    const matching=found.filter(p=>Math.abs(p.x-strongest.x)<colGap*.25&&Math.abs(p.y-strongest.y)<rowGap*.35);
+    if(matching.length<2)return null;
+    return {
+      x:matching.reduce((sum,p)=>sum+p.x,0)/matching.length/W,
+      y:(Math.min(...matching.map(p=>p.y))+Math.max(...matching.map(p=>p.y)))/2/H
+    };
+  }
+  function shopScreen(){
+    const now=Date.now();
+    if(now-shopScreenCache.at<120)return shopScreenCache.name;
+    const image=frame(true),grid=shopFindGrid(image);
+    if(grid){lastShopGrid=grid;shopScreenCache={at:now,name:'shop'};return 'shop';}
+    const confirm=shopFindConfirm(image);
+    const name=confirm?'confirm':'other';
+    shopScreenCache={at:now,name};
+    return name;
+  }
+  function shopStop(reason='Shop buyer stopped.'){
+    shopRunning=false;shopToken++;
+    shopStatus.textContent=reason+'\nConfirmation attempts: '+shopAttempts;
+    shopStartButton.disabled=false;shopStopButton.disabled=true;shopInterval.disabled=false;
+    drawShopSlots();
+  }
+  const shopSleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+  async function shopAwait(condition,timeoutMs,token){
+    const started=performance.now();
+    while(shopRunning&&token===shopToken&&performance.now()-started<timeoutMs){
+      if(condition())return true;
+      await shopSleep(55);
+    }
+    return false;
+  }
+  async function shopClick(point,token){
+    if(!shopRunning||token!==shopToken||document.hidden)return false;
+    const bounds=game.getBoundingClientRect();
+    if(!bounds.width||!bounds.height)return false;
+    const properties={clientX:bounds.left+point.x*bounds.width,clientY:bounds.top+point.y*bounds.height,button:0,bubbles:true,cancelable:true};
+    function dispatch(type,buttons){
+      const data={...properties,buttons};
+      const event=type.startsWith('pointer')&&globalThis.PointerEvent?
+        new PointerEvent(type,{...data,pointerId:1,pointerType:'mouse',isPrimary:true}):new MouseEvent(type,data);
+      game.dispatchEvent(event);
+    }
+    dispatch('pointermove',0);dispatch('mousemove',0);
+    await shopSleep(35);
+    if(!shopRunning||token!==shopToken)return false;
+    dispatch('pointerdown',1);dispatch('mousedown',1);
+    await shopSleep(65);
+    if(!shopRunning||token!==shopToken)return false;
+    dispatch('pointerup',0);dispatch('mouseup',0);dispatch('click',0);
+    return true;
+  }
+  async function shopBuyLoop(token,delay){
+    let grid=lastShopGrid;
+    try{
+      while(shopRunning&&token===shopToken){
+        if(document.hidden){shopStop('Stopped: keep the Shop visible in the active browser tab.');return;}
+        if(shopScreen()!=='shop'){
+          shopStop('Stopped: cannot detect the open Shop page. Open Shop and try again at the screenshot layout.');return;
+        }
+        const slot=shopSelected-1;
+        // Re-detect the 10 price buttons every purchase. Never fall back to
+        // a fixed position relative to the entire canvas.
+        grid=lastShopGrid;
+        if(!grid){shopStop('Stopped: unable to locate the 10 yellow price buttons.');return;}
+        const cell=grid[slot];
+        shopStatus.textContent=`Buying slot ${shopSelected}…\nConfirmation attempts: ${shopAttempts}`;
+        if(!await shopClick(cell,token))return;
+        if(!await shopAwait(()=>shopScreen()==='confirm',1800,token)){
+          if(shopRunning&&token===shopToken)shopStop('Stopped: confirmation popup did not appear. Check the shop layout or currency.');return;
+        }
+        const confirmPoint=shopFindConfirm();
+        if(!confirmPoint){shopStop('Stopped: confirmation appeared, but its yellow purchase button could not be located.');return;}
+        if(!await shopClick(confirmPoint,token))return;
+        if(!await shopAwait(()=>shopScreen()==='shop',2200,token)){
+          if(shopRunning&&token===shopToken)shopStop('Stopped: purchase popup did not close. Check if you have enough stars.');return;
+        }
+        shopAttempts++;
+        shopStatus.textContent=`Slot ${shopSelected} · confirmation clicked ${shopAttempts} time(s).\nWaiting ${delay} ms before the next attempt.`;
+        if(shopRunning&&token===shopToken)await shopSleep(delay);
+      }
+    }catch(error){if(shopRunning&&token===shopToken)shopStop('Stopped: '+error.message);}
+  }
+  function shopStart(){
+    if(shopRunning)return;
+    const ms=Number(shopInterval.value);
+    if(!Number.isInteger(ms)||ms<5||ms>60000){shopStatus.textContent='Enter an interval between 5 and 60,000 milliseconds.';return;}
+    if(document.hidden||shopScreen()!=='shop'){
+      shopStatus.textContent='Shop buttons not detected. The Shop can already be open; press Check Shop to see what the script detects.';return;
+    }
+    stop('Navigation stopped while Shop auto-buy runs.');
+    shopRunning=true;shopAttempts=0;const token=++shopToken;
+    shopStartButton.disabled=true;shopStopButton.disabled=false;shopInterval.disabled=true;
+    drawShopSlots();saveShopPrefs();
+    void shopBuyLoop(token,ms);
+  }
+  const shopTestButton=element('button','','Check Shop',shopButtons);
+  shopTestButton.onclick=()=>{
+    shopScreenCache.at=0;
+    const detected=shopScreen();
+    if(detected==='shop'){
+      const point=lastShopGrid?.[shopSelected-1];
+      const b=game.getBoundingClientRect();
+      shopStatus.textContent=`Shop detected: all 10 yellow buttons.\nSlot ${shopSelected} click at (${Math.round((point?.x||0)*b.width)}, ${Math.round((point?.y||0)*b.height)}) inside the canvas.`;
+    }else if(detected==='confirm')shopStatus.textContent='Confirmation popup detected. Close it before starting.';
+    else shopStatus.textContent='Could not match all 10 purchase buttons. Check that the full Shop is visible; if it still fails, send a screenshot.';
+  };
+  shopStartButton.onclick=shopStart;
+  shopStopButton.onclick=()=>shopStop();
   raritySelect.onchange=()=>{stop('Target changed. Press Start automatic loop.');saveSettings();};
   spawnSelect.onchange=()=>{stop('Respawn map changed.');mapping=null;region=null;terrainPixels=null;colorPixels=null;gardenReady=false;gardenData=null;rebuildRarities();if(spawnSelect.value==='Jellyfish zone')raritySelect.value='Jellyfish zone';else if(!raritySelect.value)raritySelect.value='Ultra+';gridCache=null;temporaryBlocks.clear();obstacleVersion++;patrolPreview=null;setup.style.display='block';saveSettings();};
   let panelPress=null,lastPanelActivation=null;
@@ -1630,7 +1896,7 @@
       }
       return;
     }
-    if(e.type==='keydown'&&e.code==='Escape'){stop();removeOverlay();}
+    if(e.type==='keydown'&&e.code==='Escape'){shopStop('Stopped (Escape).');stop();removeOverlay();}
     if(inside&&['keydown','keyup','keypress'].includes(e.type))e.stopImmediatePropagation();
   }
   const names=['keydown','keyup','keypress','pointerdown','pointermove','pointerup','pointercancel','mousedown','mousemove','mouseup','click','touchstart','touchmove','touchend','touchcancel','wheel'];
@@ -1904,7 +2170,7 @@
   const lifeTitle=element('div','life-title','Life statistics — drag here',lifePanel);
   const lifeMedia=matchMedia('(max-width: 680px)');
   function layoutLifePanel(){
-    if(lifeMedia.matches){panel.append(lifePanel);Object.assign(lifePanel.style,{position:'static',width:'100%',maxHeight:'none',marginTop:'12px',left:'auto',right:'auto',top:'auto'});lifeTitle.textContent='Life statistics';}
+    if(lifeMedia.matches){navPage.append(lifePanel);Object.assign(lifePanel.style,{position:'static',width:'100%',maxHeight:'none',marginTop:'12px',left:'auto',right:'auto',top:'auto'});lifeTitle.textContent='Life statistics';}
     else{root.append(lifePanel);Object.assign(lifePanel.style,{position:'fixed',width:'min(280px, calc(100vw - 24px))',maxHeight:'55vh',marginTop:'0',left:'auto',right:'12px',top:'min(220px, 35vh)'});lifeTitle.textContent='Life statistics — drag here';}
   }
   layoutLifePanel();lifeMedia.addEventListener('change',layoutLifePanel);
@@ -2171,5 +2437,5 @@
   loadSettings();
   visualRAF=requestAnimationFrame(visualFrame);refreshTextCache();
   mobCatalogRefresh=refreshPublicMobCatalog();
-  window.flowrixNav={stop,apexHistory:()=>apexHistory.map(j=>({name:j.name,map:j.map,spawnedAt:j.spawnedAt,status:j.historyStatus||'Queued',loot:j.lootGains||[]})),statsDiagnostics,apexDiagnostics,state:()=>({loadoutVerification:{...loadoutVerification},recovery:{enabled:autoRecovery.enabled,pending:!!autoRecovery.pending,attempts:autoRecovery.attempts.length,lastReason:autoRecovery.lastReason,nextRetryAt:autoRecovery.nextRetryAt,background:backgroundFarm.checked,events:autoRecovery.events.map(e=>({...e}))},apex:{active:apex.active?{name:apex.active.name,map:apex.active.map,hp:apex.active.lastBoss?.hp,dead:apex.active.dead,entityId:apex.active.entityId,borderGap:apex.active.lastBoss&&pos?distance(pos,apex.active.lastBoss)-(apex.active.lastBoss.radius||0):null,targetBorderGap:apexGap(),lastSeenMs:apex.active.lastBoss?Date.now()-apex.active.lastBoss.at:null}:null,queued:apex.queue.map(j=>({name:j.name,map:j.map})),completed:apex.completed,lastError:apex.lastError},networkWorld:{frames:serverWorld.frames,rejected:serverWorld.rejected,entities:serverWorld.entities.size,realm:serverWorld.realm},position:pos,phase,running,garden:gardenReady&&gardenData?.name==='Garden',map:gardenData?.name,directMap:gardenReady,family:gardenData?.family,familyBands:gardenData?.familyBands,realm:liveRealm?.id,realmScore:realmShapeCache?.score,life:{current:currentLife?{number:currentLife.number,startedAt:currentLife.startedAt,kills:currentLife.kills,xp:currentLife.xp}:null,past:pastLives.map(v=>({...v}))},route:route.slice(),goal,patrol:patrolPreview,blocks:temporaryBlocks.size,texts:[...textPoints]}),destroy(){visualEnabled=false;cancelAnimationFrame(visualRAF);stop();clearInterval(timer);clearInterval(lifeTimer);clearInterval(recoveryTimer);lifeNetworkHook?.detach();lifeMedia.removeEventListener('change',layoutLifePanel);removeOverlay();host.remove();for(const name of names)window.removeEventListener(name,events,true);window.removeEventListener('blur',blur);document.removeEventListener('visibilitychange',visibility);for(const h of hooks)if(h.proto[h.name]===h.wrapped)h.proto[h.name]=h.original;}};
+  window.flowrixNav={stop,shopStart,shopStop,shopState:()=>({running:shopRunning,slot:shopSelected,intervalMs:Number(shopInterval.value),attempts:shopAttempts,screen:shopScreen()}),apexHistory:()=>apexHistory.map(j=>({name:j.name,map:j.map,spawnedAt:j.spawnedAt,status:j.historyStatus||'Queued',loot:j.lootGains||[]})),statsDiagnostics,apexDiagnostics,state:()=>({loadoutVerification:{...loadoutVerification},recovery:{enabled:autoRecovery.enabled,pending:!!autoRecovery.pending,attempts:autoRecovery.attempts.length,lastReason:autoRecovery.lastReason,nextRetryAt:autoRecovery.nextRetryAt,background:backgroundFarm.checked,events:autoRecovery.events.map(e=>({...e}))},apex:{active:apex.active?{name:apex.active.name,map:apex.active.map,hp:apex.active.lastBoss?.hp,dead:apex.active.dead,entityId:apex.active.entityId,borderGap:apex.active.lastBoss&&pos?distance(pos,apex.active.lastBoss)-(apex.active.lastBoss.radius||0):null,targetBorderGap:apexGap(),lastSeenMs:apex.active.lastBoss?Date.now()-apex.active.lastBoss.at:null}:null,queued:apex.queue.map(j=>({name:j.name,map:j.map})),completed:apex.completed,lastError:apex.lastError},networkWorld:{frames:serverWorld.frames,rejected:serverWorld.rejected,entities:serverWorld.entities.size,realm:serverWorld.realm},position:pos,phase,running,garden:gardenReady&&gardenData?.name==='Garden',map:gardenData?.name,directMap:gardenReady,family:gardenData?.family,familyBands:gardenData?.familyBands,realm:liveRealm?.id,realmScore:realmShapeCache?.score,life:{current:currentLife?{number:currentLife.number,startedAt:currentLife.startedAt,kills:currentLife.kills,xp:currentLife.xp}:null,past:pastLives.map(v=>({...v}))},route:route.slice(),goal,patrol:patrolPreview,blocks:temporaryBlocks.size,texts:[...textPoints]}),destroy(){shopStop('Shop buyer removed.');visualEnabled=false;cancelAnimationFrame(visualRAF);stop();clearInterval(timer);clearInterval(lifeTimer);clearInterval(recoveryTimer);lifeNetworkHook?.detach();lifeMedia.removeEventListener('change',layoutLifePanel);removeOverlay();host.remove();for(const name of names)window.removeEventListener(name,events,true);window.removeEventListener('blur',blur);document.removeEventListener('visibilitychange',visibility);for(const h of hooks)if(h.proto[h.name]===h.wrapped)h.proto[h.name]=h.original;}};
 })();
