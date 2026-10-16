@@ -620,7 +620,8 @@
   async function clickPoint(p,token){
     if(!p||Date.now()-p.at>1000||token!==version||!running||!inputAllowed())return false;
     const r=game.getBoundingClientRect(),data={clientX:r.left+p.x*r.width/game.width,clientY:r.top+p.y*r.height/game.height,button:0,bubbles:true,cancelable:true};
-    function dispatch(type,buttons){const d={...data,buttons};(p.dom||game).dispatchEvent(type.startsWith('pointer')&&globalThis.PointerEvent?new PointerEvent(type,{...d,pointerId:1,pointerType:'mouse',isPrimary:true}):new MouseEvent(type,d));}
+    const target=p.dom||document.elementFromPoint(data.clientX,data.clientY)||game;
+    function dispatch(type,buttons){const d={...data,buttons};target.dispatchEvent(type.startsWith('pointer')&&globalThis.PointerEvent?new PointerEvent(type,{...d,pointerId:1,pointerType:'mouse',isPrimary:true}):new MouseEvent(type,d));}
     dispatch('pointermove',0);dispatch('mousemove',0);await wait(80);if(token!==version||!running)return false;
     dispatch('pointerdown',1);dispatch('mousedown',1);await wait(110);dispatch('pointerup',0);dispatch('mouseup',0);
     if(token!==version||!running||!inputAllowed())return false;dispatch('click',0);frameCache=null;return true;
