@@ -830,14 +830,15 @@
   const shopInterval=element('input','number','',shopControls);shopInterval.type='number';shopInterval.min='50';shopInterval.max='10000';shopInterval.value='300';shopInterval.setAttribute('aria-label','Shop purchase interval in milliseconds');shopControls.append(' Purchase interval (ms)');
   function shopPoint(x,y){return {x:game.width*x,y:game.height*y,at:Date.now()};}
   function shopOfferPoint(offer){const index=Math.max(1,Math.min(10,Number(offer)||1))-1;return shopPoint(.134+.183*(index%5),.512+.302*Math.floor(index/5));}
-  function shopConfirmPoint(){const confirm=freshText('Confirm');if(confirm)return {x:confirm.x-game.width*.063,y:confirm.y+game.height*.24,at:Date.now()};return shopPoint(.436,.683);}
-  async function waitForShopConfirm(token){for(let elapsed=0;elapsed<1200;elapsed+=40){if(!shopBuyer.active||token!==version||scene()!=='play')return false;if(freshText('Confirm'))return true;await wait(40);}return false;}
+  // The Shop is rendered in an overlay that does not reliably publish its labels to the
+  // canvas text hook. Its offer and confirmation buttons keep fixed relative positions.
+  function shopConfirmPoint(){return shopPoint(.436,.683);}
+  async function waitForShopConfirm(token){await wait(260);return shopBuyer.active&&token===version&&scene()==='play';}
   async function runShopBuyer(){
     const token=version,interval=Math.max(50,Math.min(10000,Number(shopInterval.value)||300));
     while(shopBuyer.active&&token===version){
-      if(!freshText('Shop')){shopStatus.textContent='Open the Shop window first, then press Start shop buyer.';shopBuyer.active=false;break;}
       if(!await clickPoint(shopOfferPoint(shopBuyer.offer),token)){shopStatus.textContent='Shop click could not be sent. Keep the game focused and the Shop open.';shopBuyer.active=false;break;}
-      if(!await waitForShopConfirm(token)){shopStatus.textContent='The purchase confirmation did not appear; buyer stopped without retrying another offer.';shopBuyer.active=false;break;}
+      if(!await waitForShopConfirm(token)){shopStatus.textContent='Shop buyer stopped.';break;}
       if(!await clickPoint(shopConfirmPoint(),token)){shopStatus.textContent='Could not confirm the purchase; buyer stopped.';shopBuyer.active=false;break;}
       shopBuyer.buys++;shopStatus.textContent=`Buying offer ${shopBuyer.offer} every ${interval} ms · confirmed clicks: ${shopBuyer.buys}. Press Stop to end.`;
       await wait(interval);
