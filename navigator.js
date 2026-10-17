@@ -7,11 +7,11 @@
   const game = document.querySelector('canvas');
   if (!game) throw new Error('Game canvas not found.');
   let heldKeys=new Set();
-  const codes = { w:87, a:65, s:83, d:68, '1':49, '2':50, '3':51, '4':52, '5':53, l:76, ' ':32, j:74 };
+  const codes = { w:87, a:65, s:83, d:68, '0':48, '1':49, '2':50, '3':51, '4':52, '5':53, l:76, ' ':32, j:74 };
   function send(type, key) {
     game.dispatchEvent(new KeyboardEvent(type, { key, code:key===' '?'Space':/^\d$/.test(key)?`Digit${key}`:`Key${key.toUpperCase()}`, keyCode:codes[key], which:codes[key], bubbles:true, cancelable:true }));
   }
-  function release() { if(typeof heldKeys!=='undefined')heldKeys.clear();for (const k of ['w','a','s','d','1','2','3','4','5','l',' ','j']) send('keyup', k); }
+  function release() { if(typeof heldKeys!=='undefined')heldKeys.clear();for (const k of ['w','a','s','d','0','1','2','3','4','5','l',' ','j']) send('keyup', k); }
   release();
   let pos = window.flowrixPosition&&Number.isFinite(window.flowrixPosition.x)&&Number.isFinite(window.flowrixPosition.y)?{...window.flowrixPosition}:null, region = null, samples = [], mapping = null, calibrating = false;
   let running = false, version = 0, pending = null, route = [], goal = null, drag = null, overlay = null;
@@ -1821,7 +1821,10 @@
       }
     }catch(error){if(shopRunning&&token===shopToken)shopStop('Stopped: '+error.message);}
   }
-  function shopStart(){
+  async function shopLoadoutZero(){
+    release();alt('keyup');send('keydown','l');await shopSleep(100);send('keydown','0');await shopSleep(100);send('keyup','0');await shopSleep(60);send('keyup','l');await shopSleep(80);
+  }
+  async function shopStart(){
     if(shopRunning)return;
     const ms=Number(shopInterval.value);
     if(!Number.isInteger(ms)||ms<1||ms>60000){shopStatus.textContent='Enter an interval between 1 and 60,000 milliseconds.';return;}
@@ -1829,6 +1832,8 @@
       shopStatus.textContent='Shop buttons not detected. The Shop can already be open; press Check Shop to see what the script detects.';return;
     }
     stop('Navigation stopped while Shop auto-buy runs.');
+    shopStatus.textContent='Switching to L0 before auto-buy starts…';await shopLoadoutZero();
+    if(document.hidden||shopScreen()!=='shop'){shopStatus.textContent='Shop closed while switching to L0. Reopen it, then start again.';return;}
     shopRunning=true;shopAttempts=0;const token=++shopToken;
     shopStartButton.disabled=true;shopStopButton.disabled=false;shopInterval.disabled=true;
     drawShopSlots();saveShopPrefs();
